@@ -50,8 +50,11 @@ def import_tasks():
     from omniisaacgymenvs.tasks.warp.cartpole import CartpoleTask as CartpoleTaskWarp
     from omniisaacgymenvs.tasks.warp.humanoid import HumanoidLocomotionTask as HumanoidLocomotionTaskWarp
 
+    from omniisaacgymenvs.tasks.rwip import RWIPTask
+
     # Mappings from strings to environments
     task_map = {
+        "RWIP": RWIPTask,
         "AllegroHand": AllegroHandTask,
         "Ant": AntLocomotionTask,
         "Anymal": AnymalTask,
