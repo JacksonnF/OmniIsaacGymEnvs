@@ -91,9 +91,37 @@ class RWIPTask(RLTask):
     def pre_physics_step(self, actions) -> None:
         if not self.world.is_playing():
             return
+        reset_env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
+        if len(reset_env_ids) > 0:
+            self.reset_idx(reset_env_ids)
+        actions = actions.to(self._device)
+        forces = torch.zeros((self._rwips.count, self._rwips.num_dof), dtype=torch.float32, device=self._device)
+        forces[:, self._rxnwheel_dof_idx] = self._max_push_effort * actions[:, 0]
+
+        indices = torch.arange(self._rwips.count, dtype=torch.int32, device=self._device)
+        self._rwips.set_joint_efforts(forces, indices=indices)
 
     def reset_idx(self, env_ids) -> None:
-        pass
+        num_resets = len(env_ids)
+
+        # randomize DOF positions
+        dof_pos = torch.zeros((num_resets, self._rwips.num_dof), device=self._device)
+        dof_pos[:, self._rxnwheel_dof_idx] = 1.0 * (1.0 - 2.0 * torch.rand(num_resets, device=self._device))
+        dof_pos[:, self._axis_dof_idx] = 0.125 * math.pi * (1.0 - 2.0 * torch.rand(num_resets, device=self._device))
+
+        # randomize DOF velocities
+        dof_vel = torch.zeros((num_resets, self._rwips.num_dof), device=self._device)
+        dof_vel[:, self._rxnwheel_dof_idx] = 0.5 * (1.0 - 2.0 * torch.rand(num_resets, device=self._device))
+        dof_vel[:, self._axis_dof_idx] = 0.25 * math.pi * (1.0 - 2.0 * torch.rand(num_resets, device=self._device))
+
+        # apply resets
+        indices = env_ids.to(dtype=torch.int32)
+        self._rwips.set_joint_positions(dof_pos, indices=indices)
+        self._rwips.set_joint_velocities(dof_vel, indices=indices)
+
+        # bookkeeping
+        self.reset_buf[env_ids] = 0
+        self.progress_buf[env_ids] = 0
 
     def post_reset(self) -> None:
         # Maybe change dof index names
@@ -103,8 +131,17 @@ class RWIPTask(RLTask):
         indices = torch.arange(self._rwips.count, dtype=torch.int64, device=self._device)
         self.reset_idx(indices)
 
+    # TODO: Rewrite this for rwip instead of cartpole
     def calculate_metrics(self) -> None:
-        pass
+        reward = 1.0 - self.axis_pos * self.axis_pos - 0.01 * torch.abs(self.rxnwheel_pos) - 0.005 * torch.abs(self.rxnwheel_pos)
+        reward = torch.where(torch.abs(self.axis_pos) > self._reset_dist, torch.ones_like(reward) * -2.0, reward)
+        reward = torch.where(torch.abs(self.rxnwheel_pos) > np.pi / 2, torch.ones_like(reward) * -2.0, reward)
 
+        self.rew_buf[:] = reward
+
+    # Rewrite this for rwip instead of cartpole
     def is_done(self) -> None:
-        pass
+        resets = torch.where(torch.abs(self.axis_pos) > self._reset_dist, 1, 0)
+        resets = torch.where(torch.abs(self.rxnwheel_pos) > math.pi / 2, 1, resets)
+        resets = torch.where(self.progress_buf >= self._max_episode_length, 1, resets)
+        self.reset_buf[:] = resets
