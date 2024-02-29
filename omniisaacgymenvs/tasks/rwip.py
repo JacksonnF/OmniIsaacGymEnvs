@@ -38,7 +38,7 @@ class RWIPTask(RLTask):
         self.update_config(sim_config)
         self._max_episode_length = 500
 
-        self._num_observations = 1
+        self._num_observations = 4
         self._num_actions = 1
 
         RLTask.__init__(self, name, env)
@@ -74,11 +74,15 @@ class RWIPTask(RLTask):
     def get_observations(self) -> dict:
         dof_pos = self._rwips.get_joint_positions(clone=False)
         dof_vel = self._rwips.get_joint_velocities(clone=False)
+        print("Position DOF: ", dof_pos)
+        print("Velocity DOF: ", dof_vel)
 
         self.rxnwheel_pos = dof_pos[:, self._rxnwheel_dof_idx]
         self.rxnwheel_vel = dof_vel[:, self._rxnwheel_dof_idx]
         self.axis_pos = dof_pos[:, self._axis_dof_idx]
         self.axis_vel = dof_vel[:, self._axis_dof_idx]
+
+        print("Observation Buffer: ", self.obs_buf.size())
 
         self.obs_buf[:, 0] = self.rxnwheel_pos
         self.obs_buf[:, 1] = self.rxnwheel_vel
@@ -127,6 +131,9 @@ class RWIPTask(RLTask):
         # Maybe change dof index names
         self._rxnwheel_dof_idx = self._rwips.get_dof_index("dof_rxnwheel")
         self._axis_dof_idx = self._rwips.get_dof_index("dof_axis")
+        print("RXN Wheel DOF index", self._rxnwheel_dof_idx)
+        print("Axis DOF Index: ", self._axis_dof_idx)
+
         # randomize all envs
         indices = torch.arange(self._rwips.count, dtype=torch.int64, device=self._device)
         self.reset_idx(indices)
