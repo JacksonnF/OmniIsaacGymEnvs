@@ -60,22 +60,23 @@ class RWIPTask(RLTask):
         self.get_rwip()
         super().set_up_scene(scene)
         self._rwips = ArticulationView(
-            prim_paths_expr="/World/envs/.*/RWIP", name="rwip_view", reset_xform_properties=False
+            prim_paths_expr="/World/envs/.*/RWIP/Assembly_1", name="rwip_view", reset_xform_properties=False
         )
         scene.add(self._rwips)
         return
 
     def get_rwip(self):
-        rwip = RWIP(prim_path="/RWIP", usd_path="", name="RWIP")
+        rwip = RWIP(prim_path=self.default_zero_env_path + "/RWIP", usd_path="/home/fizzer/Documents/unicycle_08/Assembly_1_pp.usd", name="RWIP")
         self._sim_config.apply_articulation_settings(
-            "RWIP", get_prim_at_path(rwip.prim_path), self._sim_config.parse_actor_config("RWIP")
+            "RWIP", get_prim_at_path(self.default_zero_env_path + "/RWIP"+"/Assembly_1"), self._sim_config.parse_actor_config("RWIP")
         )
 
     def get_observations(self) -> dict:
         pass
 
     def pre_physics_step(self, actions) -> None:
-        pass
+        if not self.world.is_playing():
+            return
 
     def reset_idx(self, env_ids) -> None:
         pass
