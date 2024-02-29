@@ -38,7 +38,7 @@ class RWIPTask(RLTask):
         self.update_config(sim_config)
         self._max_episode_length = 500
 
-        self._num_observations = 4
+        self._num_observations = 1
         self._num_actions = 1
 
         RLTask.__init__(self, name, env)
@@ -70,3 +70,21 @@ class RWIPTask(RLTask):
         self._sim_config.apply_articulation_settings(
             "RWIP", get_prim_at_path(rwip.prim_path), self._sim_config.parse_actor_config("RWIP")
         )
+
+    def get_observations(self) -> dict:
+        pass
+
+    def pre_physics_step(self, actions) -> None:
+        pass
+
+    def reset_idx(self, env_ids) -> None:
+        pass
+
+    def post_reset(self) -> None:
+        pass
+
+    def calculate_metrics(self) -> None:
+        pass
+
+    def is_done(self) -> None:
+        pass
