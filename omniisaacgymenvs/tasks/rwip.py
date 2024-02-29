@@ -72,7 +72,21 @@ class RWIPTask(RLTask):
         )
 
     def get_observations(self) -> dict:
-        pass
+        dof_pos = self._rwips.get_joint_positions(clone=False)
+        dof_vel = self._rwips.get_joint_velocities(clone=False)
+
+        self.rxnwheel_pos = dof_pos[:, self._rxnwheel_dof_idx]
+        self.rxnwheel_vel = dof_vel[:, self._rxnwheel_dof_idx]
+        self.axis_pos = dof_pos[:, self._axis_dof_idx]
+        self.axis_vel = dof_vel[:, self._axis_dof_idx]
+
+        self.obs_buf[:, 0] = self.rxnwheel_pos
+        self.obs_buf[:, 1] = self.rxnwheel_vel
+        self.obs_buf[:, 2] = self.axis_pos
+        self.obs_buf[:, 3] = self.axis_vel
+
+        observations = {self._rwips.name: {"obs_buf": self.obs_buf}}
+        return observations
 
     def pre_physics_step(self, actions) -> None:
         pass
@@ -81,7 +95,12 @@ class RWIPTask(RLTask):
         pass
 
     def post_reset(self) -> None:
-        pass
+        # Maybe change dof index names
+        self._rxnwheel_dof_idx = self._rwips.get_dof_index("dof_rxnwheel")
+        self._axis_dof_idx = self._rwips.get_dof_index("dof_axis")
+        # randomize all envs
+        indices = torch.arange(self._rwips.count, dtype=torch.int64, device=self._device)
+        self.reset_idx(indices)
 
     def calculate_metrics(self) -> None:
         pass
