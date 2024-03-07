@@ -10,6 +10,8 @@ from omni.isaac.core.utils.prims import get_prim_at_path
 
 from omniisaacgymenvs.tasks.base.rl_task import RLTask
 
+EPS = 1e-6
+
 class RWIP(Robot):
     def __init__(
         self,
@@ -38,7 +40,7 @@ class RWIPTask(RLTask):
         self.update_config(sim_config)
         self._max_episode_length = 500
 
-        self._num_observations = 4
+        self._num_observations = 3
         self._num_actions = 1
 
         RLTask.__init__(self, name, env)
@@ -55,6 +57,17 @@ class RWIPTask(RLTask):
 
         self._reset_dist = self._task_cfg["env"]["resetDist"]
         self._max_push_effort = self._task_cfg["env"]["maxEffort"]
+
+        self.dt = self._task_cfg["sim"]["dt"]
+
+        # parameters for the controller
+        self.motor_damp_time_up = 0.15
+        self.motor_damp_time_down = 0.15
+
+        # I use the multiplier 4, since 4*T ~ time for a step response to finish, where
+        # T is a time constant of the first-order filter
+        self.motor_tau_up = 4 * self.dt / (self.motor_damp_time_up + EPS)
+        self.motor_tau_down = 4 * self.dt / (self.motor_damp_time_down + EPS)
 
     def set_up_scene(self, scene) -> None:
         self.get_rwip()
@@ -77,17 +90,17 @@ class RWIPTask(RLTask):
         print("Position DOF: ", dof_pos)
         print("Velocity DOF: ", dof_vel)
 
-        self.rxnwheel_pos = dof_pos[:, self._rxnwheel_dof_idx]
+        # self.rxnwheel_pos = dof_pos[:, self._rxnwheel_dof_idx]
         self.rxnwheel_vel = dof_vel[:, self._rxnwheel_dof_idx]
         self.axis_pos = dof_pos[:, self._axis_dof_idx]
         self.axis_vel = dof_vel[:, self._axis_dof_idx]
 
         print("Observation Buffer: ", self.obs_buf.size())
 
-        self.obs_buf[:, 0] = self.rxnwheel_pos
-        self.obs_buf[:, 1] = self.rxnwheel_vel
-        self.obs_buf[:, 2] = self.axis_pos
-        self.obs_buf[:, 3] = self.axis_vel
+        # self.obs_buf[:, 0] = self.rxnwheel_pos
+        self.obs_buf[:, 0] = self.rxnwheel_vel
+        self.obs_buf[:, 1] = self.axis_pos
+        self.obs_buf[:, 2] = self.axis_vel
 
         observations = {self._rwips.name: {"obs_buf": self.obs_buf}}
         return observations
@@ -138,17 +151,15 @@ class RWIPTask(RLTask):
         indices = torch.arange(self._rwips.count, dtype=torch.int64, device=self._device)
         self.reset_idx(indices)
 
-    # TODO: Rewrite this for rwip instead of cartpole
     def calculate_metrics(self) -> None:
-        reward = 1.0 - self.axis_pos * self.axis_pos - 0.01 * torch.abs(self.rxnwheel_pos) - 0.005 * torch.abs(self.rxnwheel_pos)
-        reward = torch.where(torch.abs(self.axis_pos) > self._reset_dist, torch.ones_like(reward) * -2.0, reward)
-        reward = torch.where(torch.abs(self.rxnwheel_pos) > np.pi / 2, torch.ones_like(reward) * -2.0, reward)
-
+        #TODO: only want to divide by pi/2 here if axis_pos is in radians
+        reward = 1.0 - self.axis_pos * self.axis_pos / np.pi/2
+        # If we end up outside reset distance, penalize the reward
+        reward = torch.where(torch.abs(self.axis_pos) > np.pi/2, torch.ones_like(reward) * -2.0, reward)
         self.rew_buf[:] = reward
 
     # Rewrite this for rwip instead of cartpole
     def is_done(self) -> None:
-        resets = torch.where(torch.abs(self.axis_pos) > self._reset_dist, 1, 0)
-        resets = torch.where(torch.abs(self.rxnwheel_pos) > math.pi / 2, 1, resets)
+        resets = torch.where(torch.abs(self.axis_pos) > np.pi/2, 1, 0)
         resets = torch.where(self.progress_buf >= self._max_episode_length, 1, resets)
         self.reset_buf[:] = resets
