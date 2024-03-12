@@ -60,15 +60,6 @@ class RWIPTask(RLTask):
 
         self.dt = self._task_cfg["sim"]["dt"]
 
-        # parameters for the controller
-        self.motor_damp_time_up = 0.15
-        self.motor_damp_time_down = 0.15
-
-        # I use the multiplier 4, since 4*T ~ time for a step response to finish, where
-        # T is a time constant of the first-order filter
-        self.motor_tau_up = 4 * self.dt / (self.motor_damp_time_up + EPS)
-        self.motor_tau_down = 4 * self.dt / (self.motor_damp_time_down + EPS)
-
     def set_up_scene(self, scene) -> None:
         self.get_rwip()
         super().set_up_scene(scene)
@@ -79,7 +70,7 @@ class RWIPTask(RLTask):
         return
 
     def get_rwip(self):
-        rwip = RWIP(prim_path=self.default_zero_env_path + "/RWIP", usd_path="/home/fizzer/Documents/unicycle_08/Assembly_1_pp.usd", name="RWIP")
+        rwip = RWIP(prim_path=self.default_zero_env_path + "/RWIP", usd_path="/home/fizzer/Documents/unicycle_08/Assembly_1_ppp.usd", name="RWIP")
         self._sim_config.apply_articulation_settings(
             "RWIP", get_prim_at_path(self.default_zero_env_path + "/RWIP"+"/Assembly_1"), self._sim_config.parse_actor_config("RWIP")
         )
@@ -87,15 +78,11 @@ class RWIPTask(RLTask):
     def get_observations(self) -> dict:
         dof_pos = self._rwips.get_joint_positions(clone=False)
         dof_vel = self._rwips.get_joint_velocities(clone=False)
-        print("Position DOF: ", dof_pos)
-        print("Velocity DOF: ", dof_vel)
 
         # self.rxnwheel_pos = dof_pos[:, self._rxnwheel_dof_idx]
         self.rxnwheel_vel = dof_vel[:, self._rxnwheel_dof_idx]
         self.axis_pos = dof_pos[:, self._axis_dof_idx]
         self.axis_vel = dof_vel[:, self._axis_dof_idx]
-
-        print("Observation Buffer: ", self.obs_buf.size())
 
         # self.obs_buf[:, 0] = self.rxnwheel_pos
         self.obs_buf[:, 0] = self.rxnwheel_vel
@@ -144,8 +131,6 @@ class RWIPTask(RLTask):
         # Maybe change dof index names
         self._rxnwheel_dof_idx = self._rwips.get_dof_index("dof_rxnwheel")
         self._axis_dof_idx = self._rwips.get_dof_index("dof_axis")
-        print("RXN Wheel DOF index", self._rxnwheel_dof_idx)
-        print("Axis DOF Index: ", self._axis_dof_idx)
 
         # randomize all envs
         indices = torch.arange(self._rwips.count, dtype=torch.int64, device=self._device)
@@ -153,9 +138,10 @@ class RWIPTask(RLTask):
 
     def calculate_metrics(self) -> None:
         #TODO: only want to divide by pi/2 here if axis_pos is in radians
-        reward = 1.0 - self.axis_pos * self.axis_pos / np.pi/2
+        reward = 1.0 - self.axis_pos * self.axis_pos / np.pi
         # If we end up outside reset distance, penalize the reward
         reward = torch.where(torch.abs(self.axis_pos) > np.pi/2, torch.ones_like(reward) * -2.0, reward)
+       
         self.rew_buf[:] = reward
 
     # Rewrite this for rwip instead of cartpole
