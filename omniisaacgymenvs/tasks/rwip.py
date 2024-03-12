@@ -43,6 +43,10 @@ class RWIPTask(RLTask):
         self._num_observations = 3
         self._num_actions = 1
 
+        max_thrust = 2.0
+        self.thrust_lower_limits = -max_thrust * torch.ones(4, device=self._device, dtype=torch.float32)
+        self.thrust_upper_limits = max_thrust * torch.ones(4, device=self._device, dtype=torch.float32)
+
         RLTask.__init__(self, name, env)
         return
 
@@ -101,8 +105,9 @@ class RWIPTask(RLTask):
         actions = actions.to(self._device)
         forces = torch.zeros((self._rwips.count, self._rwips.num_dof), dtype=torch.float32, device=self._device)
         forces[:, self._rxnwheel_dof_idx] = self._max_push_effort * actions[:, 0]
-
+        forces[:] = torch.clamp(self.thrusts, 2.0, -2.0)
         indices = torch.arange(self._rwips.count, dtype=torch.int32, device=self._device)
+
         self._rwips.set_joint_efforts(forces, indices=indices)
 
     def reset_idx(self, env_ids) -> None:
