@@ -2,6 +2,8 @@ import math
 import torch
 import numpy as np
 from typing import Optional
+import pandas as pd
+import matplotlib.pyplot as plt
 
 from omni.isaac.core.robots.robot import Robot
 from omni.isaac.core.utils.stage import add_reference_to_stage
@@ -44,8 +46,6 @@ class RWIPTask(RLTask):
         self._num_actions = 1
 
         max_thrust = 2.0
-        self.thrust_lower_limits = -max_thrust * torch.ones(4, device=self._device, dtype=torch.float32)
-        self.thrust_upper_limits = max_thrust * torch.ones(4, device=self._device, dtype=torch.float32)
 
         RLTask.__init__(self, name, env)
         return
@@ -63,6 +63,11 @@ class RWIPTask(RLTask):
         self._max_push_effort = self._task_cfg["env"]["maxEffort"]
 
         self.dt = self._task_cfg["sim"]["dt"]
+
+        self.enable_plotting = self._task_cfg['env']['enablePlotting']
+        if self.enable_plotting:
+            self.action_data = []
+            self.pitch_data = []
 
     def set_up_scene(self, scene) -> None:
         self.get_rwip()
@@ -93,6 +98,9 @@ class RWIPTask(RLTask):
         self.obs_buf[:, 1] = self.axis_pos
         self.obs_buf[:, 2] = self.axis_vel
 
+        if self.enable_plotting:
+            self.pitch_data.append(self.axis_pos[0].cpu())
+
         observations = {self._rwips.name: {"obs_buf": self.obs_buf}}
         return observations
 
@@ -102,25 +110,49 @@ class RWIPTask(RLTask):
         reset_env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
         if len(reset_env_ids) > 0:
             self.reset_idx(reset_env_ids)
+        
         actions = actions.to(self._device)
         forces = torch.zeros((self._rwips.count, self._rwips.num_dof), dtype=torch.float32, device=self._device)
-        forces[:, self._rxnwheel_dof_idx] = self._max_push_effort * actions[:, 0]
-        forces[:] = torch.clamp(self.thrusts, 2.0, -2.0)
+        forces[:, self._rxnwheel_dof_idx] = torch.clamp(5.0 * actions[:, 0], -5.0,5.0)
+        # forces[:] = torch.clamp(forces, -2.0, 2.0)
+        try:
+            self.axis_pos
+            print("Torque Request:", forces[:, self._rxnwheel_dof_idx][0], "Axis Position:", self.axis_pos[0])
+        except:
+            print("hi")
+        # print("Torque Request:", forces[:, self._rxnwheel_dof_idx][0], "Axis Position:", self.axis_pos[0])
         indices = torch.arange(self._rwips.count, dtype=torch.int32, device=self._device)
 
         self._rwips.set_joint_efforts(forces, indices=indices)
 
+        if self.enable_plotting:
+            self.action_data.append(actions[:, 0][0].cpu())
+
     def reset_idx(self, env_ids) -> None:
+        if self.enable_plotting:
+
+            d = pd.DataFrame({
+                "pitch": self.pitch_data,
+                "action": self.action_data,
+            },
+            index = np.linspace(0, self.dt*(len(self.pitch_data)-1), len(self.pitch_data)))
+            plt.figure(0)
+            plt.title("Action over Episode")
+            d['action'].astype(float).plot()
+            plt.show()
+            self.pitch_data = []
+            self.action_data = []
         num_resets = len(env_ids)
 
         # randomize DOF positions
         dof_pos = torch.zeros((num_resets, self._rwips.num_dof), device=self._device)
         dof_pos[:, self._rxnwheel_dof_idx] = 1.0 * (1.0 - 2.0 * torch.rand(num_resets, device=self._device))
         dof_pos[:, self._axis_dof_idx] = 0.125 * math.pi * (1.0 - 2.0 * torch.rand(num_resets, device=self._device))
+        # dof_pos[:, self._axis_dof_idx] = 0.05 * torch.rand(num_resets, device=self._device)
 
         # randomize DOF velocities
         dof_vel = torch.zeros((num_resets, self._rwips.num_dof), device=self._device)
-        dof_vel[:, self._rxnwheel_dof_idx] = 0.5 * (1.0 - 2.0 * torch.rand(num_resets, device=self._device))
+        # dof_vel[:, self._rxnwheel_dof_idx] = 0.5 * (1.0 - 2.0 * torch.rand(num_resets, device=self._device))
         dof_vel[:, self._axis_dof_idx] = 0.25 * math.pi * (1.0 - 2.0 * torch.rand(num_resets, device=self._device))
 
         # apply resets
@@ -143,14 +175,13 @@ class RWIPTask(RLTask):
 
     def calculate_metrics(self) -> None:
         #TODO: only want to divide by pi/2 here if axis_pos is in radians
-        reward = 1.0 - self.axis_pos * self.axis_pos / np.pi
+        reward = 1.0 - 0.01 * self.axis_pos**2 / np.pi - 0.0001 * self.axis_vel**2
         # If we end up outside reset distance, penalize the reward
-        reward = torch.where(torch.abs(self.axis_pos) > np.pi/2, torch.ones_like(reward) * -2.0, reward)
+        reward = torch.where(torch.abs(self.axis_pos) > 1.4, torch.ones_like(reward) * -50.0, reward)
        
         self.rew_buf[:] = reward
 
-    # Rewrite this for rwip instead of cartpole
     def is_done(self) -> None:
-        resets = torch.where(torch.abs(self.axis_pos) > np.pi/2, 1, 0)
+        resets = torch.where(torch.abs(self.axis_pos) >= 1.25, 1, 0)
         resets = torch.where(self.progress_buf >= self._max_episode_length, 1, resets)
         self.reset_buf[:] = resets
