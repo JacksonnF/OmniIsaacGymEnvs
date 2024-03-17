@@ -22,7 +22,7 @@ env:
   # clipActions: 1.0
   # perform 2 simulation steps for every action (applies actions every 2 simulation steps)
   # controlFrequencyInv: 2 # 60 Hz
-  controlFrequencyInv: 5 # 2
+  controlFrequencyInv: 2 # 2
 
   enablePlotting: False
 
@@ -30,7 +30,7 @@ env:
 sim:
   # simulation dt (dt between each simulation step)
   # dt: 0.0083 # 1/120 s
-  dt: 0.001 # 0.005
+  dt: 0.005 # 0.005
   # whether to use the GPU pipeline - data returned from Isaac Sim APIs will be on the GPU if set to True
   use_gpu_pipeline: ${eq:${...pipeline},"gpu"}
   # gravity vector for the simulation scene
