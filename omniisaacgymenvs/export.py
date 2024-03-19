@@ -1,7 +1,4 @@
-# train.py
-# Script to train policies in Isaac Gym
-#
-# Copyright (c) 2018-2021, NVIDIA Corporation
+# Copyright (c) 2018-2022, NVIDIA Corporation
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -29,138 +26,172 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-# import isaacgym
 
+import datetime
 import os
+import gym
 import hydra
-from omegaconf import DictConfig, OmegaConf
-from hydra.utils import to_absolute_path
-
-from isaacgymenvs.utils.reformat import omegaconf_to_dict, print_dict
-from utils.rlgames.rlgames_utils import RLGPUEnv, RLGPUAlgoObserver, get_rlgames_env_creator
-from isaacgymenvs.utils.utils import set_np_formatting, set_seed
-
+import torch
+from omegaconf import DictConfig
+import omniisaacgymenvs
+from omniisaacgymenvs.envs.vec_env_rlgames import VecEnvRLGames
+from omniisaacgymenvs.utils.config_utils.path_utils import retrieve_checkpoint_path, get_experience
+from omniisaacgymenvs.utils.hydra_cfg.hydra_utils import *
+from omniisaacgymenvs.utils.hydra_cfg.reformat import omegaconf_to_dict, print_dict
+from omniisaacgymenvs.utils.rlgames.rlgames_utils import RLGPUAlgoObserver, RLGPUEnv
+from omniisaacgymenvs.utils.task_util import initialize_task
 from rl_games.common import env_configurations, vecenv
 from rl_games.torch_runner import Runner
 
-import yaml
-import torch
+class ModelWrapper(torch.nn.Module):
+    '''
+    Main idea is to ignore outputs which we don't need from model
+    '''
+    def __init__(self, model):
+        torch.nn.Module.__init__(self)
+        self._model = model
+        
+    def forward(self,input_dict):
+        input_dict['obs'] = self._model.norm_obs(input_dict['obs'])
+        '''
+        just model export doesn't work. Looks like onnx issue with torch distributions
+        thats why we are exporting only neural network
+        '''
 
+        return self._model.a2c_network(input_dict)
 
-# OmegaConf & Hydra Config
+class RLGTrainer:
+    def __init__(self, cfg, cfg_dict):
+        self.cfg = cfg
+        self.cfg_dict = cfg_dict
 
-# Resolvers used in hydra configs (see https://omegaconf.readthedocs.io/en/2.1_branch/usage.html#resolvers)
-OmegaConf.register_new_resolver('eq', lambda x, y: x.lower() == y.lower())
-OmegaConf.register_new_resolver(
-    'contains', lambda x, y: x.lower() in y.lower())
-OmegaConf.register_new_resolver('if', lambda pred, a, b: a if pred else b)
-# allows us to resolve default arguments which are copied in multiple places in the config. used primarily for
-# num_envs
-OmegaConf.register_new_resolver(
-    'resolve_default', lambda default, arg: default if arg == '' else arg)
+    def launch_rlg_hydra(self, env):
+        # `create_rlgpu_env` is environment construction function which is passed to RL Games and called internally.
+        # We use the helper function here to specify the environment config.
+        self.cfg_dict["task"]["test"] = self.cfg.test
 
+        # register the rl-games adapter to use inside the runner
+        vecenv.register("RLGPU", lambda config_name, num_actors, **kwargs: RLGPUEnv(config_name, num_actors, **kwargs))
+        env_configurations.register("rlgpu", {"vecenv_type": "RLGPU", "env_creator": lambda **kwargs: env})
 
-@hydra.main(config_name="config", config_path="./cfg")
-def launch_rlg_hydra(cfg: DictConfig):
+        self.rlg_config_dict = omegaconf_to_dict(self.cfg.train)
 
-    # ensure checkpoints can be specified as relative paths
-    assert cfg.checkpoint
-    cfg.checkpoint = to_absolute_path(cfg.checkpoint)
+    def run(self, module_path, experiment_dir):
+        self.rlg_config_dict["params"]["config"]["train_dir"] = os.path.join(module_path, "runs")
 
-    cfg_dict = omegaconf_to_dict(cfg)
+        # create runner and set the settings
+        runner = Runner(RLGPUAlgoObserver())
+        runner.load(self.rlg_config_dict)
+        runner.reset()
 
-    # set numpy formatting for printing only
-    set_np_formatting()
+        # dump config dict
+        os.makedirs(experiment_dir, exist_ok=True)
+        with open(os.path.join(experiment_dir, "config.yaml"), "w") as f:
+            f.write(OmegaConf.to_yaml(self.cfg))
+        
+        #----------------------------------------# 
+        print("EXPORTING TO ONNX")
+        agent = runner.create_player()
+        #TODO: Specify correct path (does runner.load_path work)
+        agent.restore('./runs_public/RWIP.pth')
 
-    # sets seed. if seed is -1 will pick a random one
-    cfg.seed = set_seed(cfg.seed, torch_deterministic=cfg.torch_deterministic)
+        #TODO: Could add testing like is done by twip
+        # where they have pytorch model(agent.model) and they
+        # check consistency of inputs/outputs (flattened vs torch)
 
-    # CamelCase to snake_case
-    import re
-    task_file = re.sub(r'(?<!^)(?=[A-Z])', '_', cfg.task_name).lower()
-    from pydoc import locate
-    task_class = locate(f'tasks.{task_file}.{task_file}.{cfg.task_name}')
+        # Create dummy inputs for model tracing
+        inputs = {
+            'obs': torch.zeros((1,) + agent.obs_shape).to(agent.device)
+        }
+        import rl_games.algos_torch.flatten as flatten # can also just import flatten?
+        with torch.no_grad():
+            adapter = flatten.TracingAdapter(
+                ModelWrapper(agent.model), inputs, allow_non_tensor=True)
+            traced = torch.jit.trace(adapter, adapter.flattened_inputs, check_trace=False)
+            flattened_outputs = traced(*adapter.flattened_inputs)
+            print(flattened_outputs)
 
-    # `create_rlgpu_env` is environment construction function which is passed to RL Games and called internally.
-    # We use the helper function here to specify the environment config.
-    create_rlgpu_env = get_rlgames_env_creator(
-        omegaconf_to_dict(cfg.task),
-        task_class,
-        cfg.sim_device,
-        cfg.rl_device,
-        cfg.graphics_device_id,
-        cfg.headless,
-        multi_gpu=cfg.multi_gpu,
+        torch.onnx.export(
+            traced, *adapter.flattened_inputs, "rwip.onnx", 
+            verbose=True, input_names=['obs'], 
+            output_names=['mu', 'log_std', 'value']
+            )
+        print("Model Exported.... Checking correctness")
+
+        #----------------------------------------#
+
+@hydra.main(version_base=None, config_name="config", config_path="../cfg")
+def parse_hydra_configs(cfg: DictConfig):
+
+    time_str = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+
+    headless = cfg.headless
+
+    # local rank (GPU id) in a current multi-gpu mode
+    local_rank = int(os.getenv("LOCAL_RANK", "0"))
+    # global rank (GPU id) in multi-gpu multi-node mode
+    global_rank = int(os.getenv("RANK", "0"))
+    if cfg.multi_gpu:
+        cfg.device_id = local_rank
+        cfg.rl_device = f'cuda:{local_rank}'
+    enable_viewport = "enable_cameras" in cfg.task.sim and cfg.task.sim.enable_cameras
+
+    # select kit app file
+    experience = get_experience(headless, cfg.enable_livestream, enable_viewport, cfg.enable_recording, cfg.kit_app)
+
+    env = VecEnvRLGames(
+        headless=headless,
+        sim_device=cfg.device_id,
+        enable_livestream=cfg.enable_livestream,
+        enable_viewport=enable_viewport or cfg.enable_recording,
+        experience=experience
     )
 
-    # register the rl-games adapter to use inside the runner
-    vecenv.register('RLGPU',
-                    lambda config_name, num_actors, **kwargs: RLGPUEnv(config_name, num_actors, **kwargs))
-    env_configurations.register('rlgpu', {
-        'vecenv_type': 'RLGPU',
-        'env_creator': lambda **kwargs: create_rlgpu_env(**kwargs),
-    })
+    # parse experiment directory
+    module_path = os.path.abspath(os.path.join(os.path.dirname(omniisaacgymenvs.__file__)))
+    experiment_dir = os.path.join(module_path, "runs", cfg.train.params.config.name)
 
-    rlg_config_dict = omegaconf_to_dict(cfg.train)
+    # use gym RecordVideo wrapper for viewport recording
+    if cfg.enable_recording:
+        if cfg.recording_dir == '':
+            videos_dir = os.path.join(experiment_dir, "videos")
+        else:
+            videos_dir = cfg.recording_dir
+        video_interval = lambda step: step % cfg.recording_interval == 0
+        video_length = cfg.recording_length
+        env.is_vector_env = True
+        if env.metadata is None:
+            env.metadata = {"render_modes": ["rgb_array"], "render_fps": cfg.recording_fps}
+        else:
+            env.metadata["render_modes"] = ["rgb_array"]
+            env.metadata["render_fps"] = cfg.recording_fps
+        env = gym.wrappers.RecordVideo(
+            env, video_folder=videos_dir, step_trigger=video_interval, video_length=video_length
+        )
 
-    # convert CLI arguments into dictionory
-    # create runner and set the settings
-    runner = Runner(RLGPUAlgoObserver())
-    runner.load(rlg_config_dict)
-    runner.reset()
+    # ensure checkpoints can be specified as relative paths
+    if cfg.checkpoint:
+        cfg.checkpoint = retrieve_checkpoint_path(cfg.checkpoint)
+        if cfg.checkpoint is None:
+            quit()
 
-    # dump config dict
-    experiment_dir = os.path.join('runs', cfg.train.params.config.name)
-    os.makedirs(experiment_dir, exist_ok=True)
-    with open(os.path.join(experiment_dir, 'config.yaml'), 'w') as f:
-        f.write(OmegaConf.to_yaml(cfg))
+    cfg_dict = omegaconf_to_dict(cfg)
+    print_dict(cfg_dict)
 
-    # Begin exporting ONNX for inference
-    print("Exporting!")
+    # sets seed. if seed is -1 will pick a random one
+    from omni.isaac.core.utils.torch.maths import set_seed
+    cfg.seed = cfg.seed + global_rank if cfg.seed != -1 else cfg.seed
+    cfg.seed = set_seed(cfg.seed, torch_deterministic=cfg.torch_deterministic)
+    cfg_dict["seed"] = cfg.seed
 
-    # Load model from checkpoint
-    player = runner.create_player()
-    player.restore(runner.load_path)
+    task = initialize_task(cfg_dict, env)
 
-    # Create dummy observations tensor for tracing torch model
-    obs_shape = player.obs_shape
-    actions_num = player.actions_num
-    obs_num = obs_shape[0]
-    dummy_input = torch.zeros(obs_shape, device='cuda:0')
-
-    # Simplified network for actor inference
-    # Tested for continuous_a2c_logstd
-    class ActorModel(torch.nn.Module):
-        def __init__(self, a2c_network):
-            super().__init__()
-            self.a2c_network = a2c_network
-
-        def forward(self, x):
-            x = self.a2c_network.actor_mlp(x)
-            x = self.a2c_network.mu(x)
-            return x
-    model = ActorModel(player.model.a2c_network)
-
-    # Since rl_games uses dicts, we can flatten the inputs and outputs of the model: see https://github.com/Denys88/rl_games/issues/92
-    # Not necessary with the custom ActorModel defined above, but code is included here if needed
-    import flatten as flatten
-    with torch.no_grad():
-        adapter = flatten.TracingAdapter(
-            model, dummy_input, allow_non_tensor=True)
-        torch.onnx.export(adapter, adapter.flattened_inputs, f"{cfg.checkpoint}.onnx", verbose=True,
-                          input_names=['observations'],
-                          output_names=['actions'])  # outputs are mu (actions), sigma, value
-        traced = torch.jit.trace(adapter, dummy_input, check_trace=True)
-        flattened_outputs = traced(dummy_input)
-    print(f"Exported to {cfg.checkpoint}.onnx!")
-
-    # Print dummy output and model output (make sure these have the same values)
-    print("Flattened outputs: ", flattened_outputs)
-    print(model.forward(dummy_input))
-
-    print("# Observations: ", obs_num)
-    print("# Actions: ", actions_num)
+    torch.cuda.set_device(local_rank)
+    rlg_trainer = RLGTrainer(cfg, cfg_dict)
+    rlg_trainer.launch_rlg_hydra(env)
+    rlg_trainer.run(module_path, experiment_dir)
+    env.close()
 
 
 if __name__ == "__main__":
-    launch_rlg_hydra()
+    parse_hydra_configs()

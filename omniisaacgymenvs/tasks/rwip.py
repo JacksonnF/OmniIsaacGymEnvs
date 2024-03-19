@@ -88,12 +88,10 @@ class RWIPTask(RLTask):
         dof_pos = self._rwips.get_joint_positions(clone=False)
         dof_vel = self._rwips.get_joint_velocities(clone=False)
 
-        # self.rxnwheel_pos = dof_pos[:, self._rxnwheel_dof_idx]
         self.rxnwheel_vel = dof_vel[:, self._rxnwheel_dof_idx]
         self.axis_pos = dof_pos[:, self._axis_dof_idx]
         self.axis_vel = dof_vel[:, self._axis_dof_idx]
 
-        # self.obs_buf[:, 0] = self.rxnwheel_pos
         self.obs_buf[:, 0] = self.rxnwheel_vel
         self.obs_buf[:, 1] = self.axis_pos
         self.obs_buf[:, 2] = self.axis_vel
@@ -120,7 +118,6 @@ class RWIPTask(RLTask):
             # print("Torque Request:", forces[:, self._rxnwheel_dof_idx][0], "Axis Position:", self.axis_pos[0], "Axis Velocity: ", self.axis_vel[0])
         except:
             print("hi")
-        # print("Torque Request:", forces[:, self._rxnwheel_dof_idx][0], "Axis Position:", self.axis_pos[0])
         indices = torch.arange(self._rwips.count, dtype=torch.int32, device=self._device)
 
         self._rwips.set_joint_efforts(forces, indices=indices)
@@ -144,16 +141,15 @@ class RWIPTask(RLTask):
         #     self.action_data = []
         num_resets = len(env_ids)
 
-        # randomize DOF positions
+        # randomize pendulumn axis position
         dof_pos = torch.zeros((num_resets, self._rwips.num_dof), device=self._device)
-        dof_pos[:, self._rxnwheel_dof_idx] = 1.0 * (1.0 - 2.0 * torch.rand(num_resets, device=self._device))
-        dof_pos[:, self._axis_dof_idx] = 0.125 * math.pi * (1.0 - 2.0 * torch.rand(num_resets, device=self._device))
-        # dof_pos[:, self._axis_dof_idx] = 0.05 * torch.rand(num_resets, device=self._device)
+        dof_pos[:, self._axis_dof_idx] = 0.25 * math.pi * (1.0 - 2.0 * torch.rand(num_resets, device=self._device))
 
         # randomize DOF velocities
         dof_vel = torch.zeros((num_resets, self._rwips.num_dof), device=self._device)
-        # dof_vel[:, self._rxnwheel_dof_idx] = 0.5 * (1.0 - 2.0 * torch.rand(num_resets, device=self._device))
+        #TODO: Check units for velocities
         dof_vel[:, self._axis_dof_idx] = 0.25 * math.pi * (1.0 - 2.0 * torch.rand(num_resets, device=self._device))
+        dof_vel[:, self._rxnwheel_dof_idx] = 0.25 * math.pi * (1.0 - 2.0 * torch.rand(num_resets, device=self._device))
 
         # apply resets
         indices = env_ids.to(dtype=torch.int32)
