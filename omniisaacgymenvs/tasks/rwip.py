@@ -40,12 +40,14 @@ class RWIP(Robot):
 class RWIPTask(RLTask):
     def __init__(self, name, sim_config, env, offset=None) -> None:
         self.update_config(sim_config)
-        self._max_episode_length = 500
+        self._max_episode_length = 300
 
         self._num_observations = 3
         self._num_actions = 1
 
         max_thrust = 2.0
+
+        
 
         RLTask.__init__(self, name, env)
         return
@@ -69,6 +71,8 @@ class RWIPTask(RLTask):
             self.action_data = []
             self.pitch_data = []
 
+        
+
     def set_up_scene(self, scene) -> None:
         self.get_rwip()
         super().set_up_scene(scene)
@@ -76,10 +80,11 @@ class RWIPTask(RLTask):
             prim_paths_expr="/World/envs/.*/RWIP/RWIP_SIM_TEST", name="rwip_view", reset_xform_properties=False
         )
         scene.add(self._rwips)
+        self.torque_buffer = torch.zeros(10, self._num_envs, 1, device=self._device)
         return
 
     def get_rwip(self):
-        rwip = RWIP(prim_path=self.default_zero_env_path + "/RWIP", usd_path="/home/fizzer/Documents/unicycle_08/RWIP_SIM_TEST_GOOD.usd", name="RWIP")
+        rwip = RWIP(prim_path=self.default_zero_env_path + "/RWIP", usd_path="/home/fizzer/Documents/unicycle_08/RWIP_SIM_TEST_ZEROED.usd", name="RWIP")
         self._sim_config.apply_articulation_settings(
             "RWIP", get_prim_at_path(self.default_zero_env_path + "/RWIP"+"/RWIP_SIM_TEST"), self._sim_config.parse_actor_config("RWIP")
         )
@@ -110,9 +115,13 @@ class RWIPTask(RLTask):
             self.reset_idx(reset_env_ids)
         
         actions = actions.to(self._device)
+        # print("ACTIONS: ", actions[:, 0][0].cpu())
         forces = torch.zeros((self._rwips.count, self._rwips.num_dof), dtype=torch.float32, device=self._device)
-        forces[:, self._rxnwheel_dof_idx] = torch.clamp(2.0 * actions[:, 0], -2.0,2.0)
-        # forces[:] = torch.clamp(forces, -2.0, 2.0)
+        forces[:, self._rxnwheel_dof_idx] = torch.clamp(1.0 * actions[:, 0], -1.0, 1.0)
+        
+        self.torque_buffer = torch.roll(self.torque_buffer, -1, dims=0)
+        self.torque_buffer[-1] = forces[:, self._rxnwheel_dof_idx].unsqueeze(-1)
+
         try:
             self.axis_pos
             # print("Torque Request:", forces[:, self._rxnwheel_dof_idx][0], "Axis Position:", self.axis_pos[0], "Axis Velocity: ", self.axis_vel[0])
@@ -126,19 +135,6 @@ class RWIPTask(RLTask):
             self.action_data.append(actions[:, 0][0].cpu())
 
     def reset_idx(self, env_ids) -> None:
-        # if self.enable_plotting:
-
-        #     d = pd.DataFrame({
-        #         "pitch": self.pitch_data,
-        #         "action": self.action_data,
-        #     },
-        #     index = np.linspace(0, self.dt*(len(self.pitch_data)-1), len(self.pitch_data)))
-        #     plt.figure(0)
-        #     plt.title("Action over Episode")
-        #     d['action'].astype(float).plot()
-        #     plt.show()
-        #     self.pitch_data = []
-        #     self.action_data = []
         num_resets = len(env_ids)
 
         # randomize pendulumn axis position
@@ -172,9 +168,12 @@ class RWIPTask(RLTask):
 
     def calculate_metrics(self) -> None:
         #TODO: only want to divide by pi/2 here if axis_pos is in radians
-        reward = 1.0 - 0.1 * self.axis_pos**2 / np.pi - 0.0001 * self.axis_vel**2
+        print("YOYOYOOYO",torch.abs(torch.tanh(8*self.axis_pos)).size())
+        print("RUNNING AVERAGE", torch.mean(self.torque_buffer, dim=0), torch.mean(self.torque_buffer, dim=0).size())
+
+        reward = 1.0 - torch.abs(torch.tanh(8*self.axis_pos)) - 0.1 * torch.squeeze(torch.abs(torch.mean(self.torque_buffer, dim=0)), dim=1)
         # If we end up outside reset distance, penalize the reward
-        reward = torch.where(torch.abs(self.axis_pos) > 1.4, torch.ones_like(reward) * -50.0, reward)
+        reward = torch.where(torch.abs(self.axis_pos) > 1.35, torch.ones_like(reward) * -10.0, reward)
         # print("Reward: ", reward[0])
         self.rew_buf[:] = reward
 

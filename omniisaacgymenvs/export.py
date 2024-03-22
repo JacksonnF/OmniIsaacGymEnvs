@@ -59,6 +59,16 @@ class ModelWrapper(torch.nn.Module):
         '''
 
         return self._model.a2c_network(input_dict)
+    
+class ActorModel(torch.nn.Module):
+    def __init__(self, a2c_network):
+        super().__init__()
+        self.a2c_network = a2c_network
+    
+    def forward(self, x):
+        x = self.a2c_network.actor_mlp(x)
+        x = self.a2c_network.mu(x)
+        return x
 
 class RLGTrainer:
     def __init__(self, cfg, cfg_dict):
@@ -98,29 +108,50 @@ class RLGTrainer:
         #TODO: Could add testing like is done by twip
         # where they have pytorch model(agent.model) and they
         # check consistency of inputs/outputs (flattened vs torch)
+        m = ModelWrapper(agent.model)
 
         # Create dummy inputs for model tracing
         inputs = {
             'obs': torch.zeros((1,) + agent.obs_shape).to(agent.device)
         }
+        dumbinput = torch.zeros((1,) + agent.obs_shape).to(agent.device)
+        mod_simp = ActorModel(agent.model.a2c_network)
+
         import rl_games.algos_torch.flatten as flatten # can also just import flatten?
         with torch.no_grad():
             adapter = flatten.TracingAdapter(
-                ModelWrapper(agent.model), inputs, allow_non_tensor=True)
-            traced = torch.jit.trace(adapter, adapter.flattened_inputs, check_trace=False)
-            flattened_outputs = traced(*adapter.flattened_inputs)
+                mod_simp, dumbinput, allow_non_tensor=True)
+            traced = torch.jit.trace(adapter, dumbinput, check_trace=False)
+            flattened_outputs = traced(dumbinput)
             print(flattened_outputs)
 
         torch.onnx.export(
-            traced, *adapter.flattened_inputs, "rwip.onnx", 
-            verbose=True, input_names=['obs'], 
-            output_names=['mu', 'log_std', 'value']
+            adapter, adapter.flattened_inputs, "rwip_simp_model.onnx", 
+            verbose=True, input_names=['observations'], 
+            output_names=['actions']
             )
+        # import rl_games.algos_torch.flatten as flatten # can also just import flatten?
+        # with torch.no_grad():
+        #     adapter = flatten.TracingAdapter(
+        #         ModelWrapper(agent.model), inputs, allow_non_tensor=True)
+        #     traced = torch.jit.trace(adapter, adapter.flattened_inputs, check_trace=False)
+        #     flattened_outputs = traced(*adapter.flattened_inputs)
+        #     print(flattened_outputs)
+
+        # torch.onnx.export(
+        #     traced, *adapter.flattened_inputs, "rwip_simp_model.onnx", 
+        #     verbose=True, input_names=['obs'], 
+        #     output_names=['mu', 'log_std', 'value']
+        #     )
         print("Model Exported.... Checking correctness")
+        print("ONNX Outputs: ", {flattened_outputs})
+        print("Model Outputs: ", {mod_simp.forward(dumbinput)})
+
+        print("Observation Shape: ", agent.obs_shape, "Action Shape: ", agent.actions_num)
 
         #----------------------------------------#
 
-@hydra.main(version_base=None, config_name="config", config_path="../cfg")
+@hydra.main(version_base=None, config_name="config", config_path="./cfg")
 def parse_hydra_configs(cfg: DictConfig):
 
     time_str = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
