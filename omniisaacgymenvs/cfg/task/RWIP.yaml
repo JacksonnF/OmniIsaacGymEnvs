@@ -11,7 +11,7 @@ env:
   # spacing between each environment (in meters)
   envSpacing: 3.0
   # effort scaling
-  maxEffort: 1.0
+  maxEffort: 0.6
   # perform 2 simulation steps for every action (applies actions every 2 simulation steps)
   controlFrequencyInv: 2 # 2
 

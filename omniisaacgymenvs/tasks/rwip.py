@@ -41,7 +41,7 @@ class RWIP(Robot):
 class RWIPTask(RLTask):
     def __init__(self, name, sim_config, env, offset=None) -> None:
         self.update_config(sim_config)
-        self._max_episode_length = 300
+        self._max_episode_length = 500
 
         self._num_observations = 3
         self._num_actions = 1
@@ -114,7 +114,7 @@ class RWIPTask(RLTask):
 
         # randomize pendulumn axis position
         dof_pos = torch.zeros((num_resets, self._rwips.num_dof), device=self._device)
-        dof_pos[:, self._axis_dof_idx] = 0.25 * math.pi * (1.0 - 2.0 * torch.rand(num_resets, device=self._device))
+        dof_pos[:, self._axis_dof_idx] = 0.23 * math.pi * (1.0 - 2.0 * torch.rand(num_resets, device=self._device))
 
         # randomize DOF velocities
         dof_vel = torch.zeros((num_resets, self._rwips.num_dof), device=self._device)
@@ -143,10 +143,10 @@ class RWIPTask(RLTask):
 
         reward = 1.0 - torch.abs(torch.tanh(8*self.axis_pos)) - 0.1 * torch.squeeze(torch.abs(torch.mean(self.torque_buffer, dim=0)), dim=1)
         # If we end up outside reset distance, penalize the reward
-        reward = torch.where(torch.abs(self.axis_pos) > 1.25, torch.ones_like(reward) * -10.0, reward)
+        reward = torch.where(torch.abs(self.axis_pos) > 0.5, torch.ones_like(reward) * -5.0, reward)
         self.rew_buf[:] = reward
 
     def is_done(self) -> None:
-        resets = torch.where(torch.abs(self.axis_pos) >= 1.25, 1, 0)
+        resets = torch.where(torch.abs(self.axis_pos) >= 0.5, 1, 0)
         resets = torch.where(self.progress_buf >= self._max_episode_length, 1, resets)
         self.reset_buf[:] = resets

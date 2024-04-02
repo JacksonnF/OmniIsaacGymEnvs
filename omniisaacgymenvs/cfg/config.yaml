@@ -58,9 +58,9 @@ recording_fps: 30
 # directory to save recordings in
 recording_dir: ''
 
-wandb_activate: False
-wandb_group: 'rwip_torque-penalty_reweqn1'
-wandb_name: '1_0-maxtorque_125radreset'
+wandb_activate: True
+wandb_group: 'reward_eqn1'
+wandb_name: '0_6-maxtorque'
 wandb_entity: '2411-rl-unicycle'
 wandb_project: 'RWIP'
 
