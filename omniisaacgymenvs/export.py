@@ -103,7 +103,7 @@ class RLGTrainer:
         print("EXPORTING TO ONNX")
         agent = runner.create_player()
         #TODO: Specify correct path (does runner.load_path work)
-        agent.restore('./runs_public/RWIP.pth')
+        agent.restore('./runs/RWIP/nn/RWIP.pth')
 
         #TODO: Could add testing like is done by twip
         # where they have pytorch model(agent.model) and they
@@ -114,38 +114,38 @@ class RLGTrainer:
         inputs = {
             'obs': torch.zeros((1,) + agent.obs_shape).to(agent.device)
         }
-        dumbinput = torch.zeros((1,) + agent.obs_shape).to(agent.device)
-        mod_simp = ActorModel(agent.model.a2c_network)
+        # dumbinput = torch.zeros((1,) + agent.obs_shape).to(agent.device)
+        # mod_simp = ActorModel(agent.model.a2c_network)
 
-        import rl_games.algos_torch.flatten as flatten # can also just import flatten?
-        with torch.no_grad():
-            adapter = flatten.TracingAdapter(
-                mod_simp, dumbinput, allow_non_tensor=True)
-            traced = torch.jit.trace(adapter, dumbinput, check_trace=False)
-            flattened_outputs = traced(dumbinput)
-            print(flattened_outputs)
-
-        torch.onnx.export(
-            adapter, adapter.flattened_inputs, "rwip_simp_model.onnx", 
-            verbose=True, input_names=['observations'], 
-            output_names=['actions']
-            )
         # import rl_games.algos_torch.flatten as flatten # can also just import flatten?
         # with torch.no_grad():
         #     adapter = flatten.TracingAdapter(
-        #         ModelWrapper(agent.model), inputs, allow_non_tensor=True)
-        #     traced = torch.jit.trace(adapter, adapter.flattened_inputs, check_trace=False)
-        #     flattened_outputs = traced(*adapter.flattened_inputs)
+        #         mod_simp, dumbinput, allow_non_tensor=True)
+        #     traced = torch.jit.trace(adapter, dumbinput, check_trace=False)
+        #     flattened_outputs = traced(dumbinput)
         #     print(flattened_outputs)
 
         # torch.onnx.export(
-        #     traced, *adapter.flattened_inputs, "rwip_simp_model.onnx", 
-        #     verbose=True, input_names=['obs'], 
-        #     output_names=['mu', 'log_std', 'value']
+        #     adapter, adapter.flattened_inputs, "rwip_simp_model.onnx", 
+        #     verbose=True, input_names=['observations'], 
+        #     output_names=['actions']
         #     )
+        import rl_games.algos_torch.flatten as flatten # can also just import flatten?
+        with torch.no_grad():
+            adapter = flatten.TracingAdapter(
+                ModelWrapper(agent.model), inputs, allow_non_tensor=True)
+            traced = torch.jit.trace(adapter, adapter.flattened_inputs, check_trace=False)
+            flattened_outputs = traced(*adapter.flattened_inputs)
+            print(flattened_outputs)
+
+        torch.onnx.export(
+            traced, *adapter.flattened_inputs, "rwip_model_m22.onnx", 
+            verbose=True, input_names=['obs'], 
+            output_names=['mu', 'log_std', 'value']
+            )
         print("Model Exported.... Checking correctness")
         print("ONNX Outputs: ", {flattened_outputs})
-        print("Model Outputs: ", {mod_simp.forward(dumbinput)})
+        print("Model Outputs: ", {m.forward(inputs)})
 
         print("Observation Shape: ", agent.obs_shape, "Action Shape: ", agent.actions_num)
 

@@ -59,10 +59,10 @@ recording_fps: 30
 recording_dir: ''
 
 wandb_activate: False
-wandb_group: ''
-wandb_name: ${train.params.config.name}
-wandb_entity: ''
-wandb_project: 'omniisaacgymenvs'
+wandb_group: 'rwip_torque-penalty_reweqn1'
+wandb_name: '1_0-maxtorque_125radreset'
+wandb_entity: '2411-rl-unicycle'
+wandb_project: 'RWIP'
 
 # path to a kit app file
 kit_app: ''

@@ -4,6 +4,7 @@ import numpy as np
 from typing import Optional
 # import pandas as pd
 import matplotlib.pyplot as plt
+import onnxruntime as ort
 
 from omni.isaac.core.robots.robot import Robot
 from omni.isaac.core.utils.stage import add_reference_to_stage
@@ -44,11 +45,6 @@ class RWIPTask(RLTask):
 
         self._num_observations = 3
         self._num_actions = 1
-
-        max_thrust = 2.0
-
-        
-
         RLTask.__init__(self, name, env)
         return
 
@@ -61,17 +57,9 @@ class RWIPTask(RLTask):
         self._env_spacing = self._task_cfg["env"]["envSpacing"]
         self._cartpole_positions = torch.tensor([0.0, 0.0, 2.0])
 
-        self._reset_dist = self._task_cfg["env"]["resetDist"]
-        self._max_push_effort = self._task_cfg["env"]["maxEffort"]
+        self._max_effort = self._task_cfg["env"]["maxEffort"]
 
         self.dt = self._task_cfg["sim"]["dt"]
-
-        self.enable_plotting = self._task_cfg['env']['enablePlotting']
-        if self.enable_plotting:
-            self.action_data = []
-            self.pitch_data = []
-
-        
 
     def set_up_scene(self, scene) -> None:
         self.get_rwip()
@@ -101,9 +89,6 @@ class RWIPTask(RLTask):
         self.obs_buf[:, 1] = self.axis_pos
         self.obs_buf[:, 2] = self.axis_vel
 
-        if self.enable_plotting:
-            self.pitch_data.append(self.axis_pos[0].cpu())
-
         observations = {self._rwips.name: {"obs_buf": self.obs_buf}}
         return observations
 
@@ -115,24 +100,14 @@ class RWIPTask(RLTask):
             self.reset_idx(reset_env_ids)
         
         actions = actions.to(self._device)
-        # print("ACTIONS: ", actions[:, 0][0].cpu())
         forces = torch.zeros((self._rwips.count, self._rwips.num_dof), dtype=torch.float32, device=self._device)
-        forces[:, self._rxnwheel_dof_idx] = torch.clamp(1.0 * actions[:, 0], -1.0, 1.0)
+        forces[:, self._rxnwheel_dof_idx] = torch.clamp(self._max_effort * actions[:, 0], -self._max_effort, self._max_effort)
         
         self.torque_buffer = torch.roll(self.torque_buffer, -1, dims=0)
         self.torque_buffer[-1] = forces[:, self._rxnwheel_dof_idx].unsqueeze(-1)
 
-        try:
-            self.axis_pos
-            # print("Torque Request:", forces[:, self._rxnwheel_dof_idx][0], "Axis Position:", self.axis_pos[0], "Axis Velocity: ", self.axis_vel[0])
-        except:
-            print("hi")
         indices = torch.arange(self._rwips.count, dtype=torch.int32, device=self._device)
-
         self._rwips.set_joint_efforts(forces, indices=indices)
-
-        if self.enable_plotting:
-            self.action_data.append(actions[:, 0][0].cpu())
 
     def reset_idx(self, env_ids) -> None:
         num_resets = len(env_ids)
@@ -143,7 +118,6 @@ class RWIPTask(RLTask):
 
         # randomize DOF velocities
         dof_vel = torch.zeros((num_resets, self._rwips.num_dof), device=self._device)
-        #TODO: Check units for velocities
         dof_vel[:, self._axis_dof_idx] = 0.25 * math.pi * (1.0 - 2.0 * torch.rand(num_resets, device=self._device))
         dof_vel[:, self._rxnwheel_dof_idx] = 0.25 * math.pi * (1.0 - 2.0 * torch.rand(num_resets, device=self._device))
 
@@ -158,7 +132,6 @@ class RWIPTask(RLTask):
 
     def post_reset(self) -> None:
         print(self._rwips.dof_names)
-        # Maybe change dof index names
         self._rxnwheel_dof_idx = self._rwips.get_dof_index("dof_rxnwheel")
         self._axis_dof_idx = self._rwips.get_dof_index("dof_axis")
 
@@ -167,14 +140,10 @@ class RWIPTask(RLTask):
         self.reset_idx(indices)
 
     def calculate_metrics(self) -> None:
-        #TODO: only want to divide by pi/2 here if axis_pos is in radians
-        print("YOYOYOOYO",torch.abs(torch.tanh(8*self.axis_pos)).size())
-        print("RUNNING AVERAGE", torch.mean(self.torque_buffer, dim=0), torch.mean(self.torque_buffer, dim=0).size())
 
         reward = 1.0 - torch.abs(torch.tanh(8*self.axis_pos)) - 0.1 * torch.squeeze(torch.abs(torch.mean(self.torque_buffer, dim=0)), dim=1)
         # If we end up outside reset distance, penalize the reward
-        reward = torch.where(torch.abs(self.axis_pos) > 1.35, torch.ones_like(reward) * -10.0, reward)
-        # print("Reward: ", reward[0])
+        reward = torch.where(torch.abs(self.axis_pos) > 1.25, torch.ones_like(reward) * -10.0, reward)
         self.rew_buf[:] = reward
 
     def is_done(self) -> None:
