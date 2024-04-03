@@ -10,7 +10,7 @@ num_envs: ''
 # seed - set to -1 to choose random seed
 seed: 42
 # set to True for deterministic performance
-torch_deterministic: True
+torch_deterministic: False
 
 # set the maximum number of learning iterations to train for. overrides default per-environment setting
 max_iterations: ''
@@ -34,14 +34,14 @@ solver_type: 1 # 0: pgs, 1: tgs
 
 # RLGames Arguments
 # test - if set, run policy in inference mode (requires setting checkpoint to load)
-test: True
+test: False
 # used to set checkpoint path
 checkpoint: ''
 # evaluate checkpoint
 evaluation: False
 
 # disables rendering
-headless: True
+headless: False
 # enables native livestream
 enable_livestream: False
 # timeout for MT script
@@ -58,9 +58,9 @@ recording_fps: 30
 # directory to save recordings in
 recording_dir: ''
 
-wandb_activate: False
+wandb_activate: True
 wandb_group: 'reward_eqn4'
-wandb_name: '0_6-maxtorque_dr-obs0_1maxstd'
+wandb_name: '0_6-maxtorque_dr-obs0_005maxstd_take2'
 wandb_entity: '2411-rl-unicycle'
 wandb_project: 'RWIP'
 

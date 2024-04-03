@@ -54,7 +54,7 @@ class RWIPTask(RLTask):
             # )
             self._observations_correlated_noise = torch.normal(
                 mean=0,
-                std=0.1,
+                std=0.005,
                 size=(self._num_envs, self._num_observations),
                 device=self._cfg["rl_device"],
             )
@@ -108,7 +108,7 @@ class RWIPTask(RLTask):
         if self.randomize:
             _observations_uncorrelated_noise = torch.normal(
                     mean=0,
-                    std=0.005,
+                    std=0.0001,
                     size=(self._num_envs, self._num_observations),
                     device=self._cfg["rl_device"],
                 )
@@ -127,7 +127,7 @@ class RWIPTask(RLTask):
             if self.randomize:
                 self._observations_correlated_noise[reset_env_ids] = torch.normal(
                         mean=0,
-                        std=0.1,
+                        std=0.005,
                         size=(len(reset_env_ids), self._num_observations),
                         device=self._cfg["rl_device"],
                     )

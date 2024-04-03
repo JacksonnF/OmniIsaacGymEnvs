@@ -103,7 +103,7 @@ class RLGTrainer:
         print("EXPORTING TO ONNX")
         agent = runner.create_player()
         #TODO: Specify correct path (does runner.load_path work)
-        agent.restore('./runs_public/runs_reweqn4_nodr/RWIP/nn/RWIP.pth')
+        agent.restore('./runs_public/run_reweqn1_0_6maxt_nodr/last_RWIP_ep_400_rew_190.15865.pth')
 
         #TODO: Could add testing like is done by twip
         # where they have pytorch model(agent.model) and they
@@ -139,7 +139,7 @@ class RLGTrainer:
             print(flattened_outputs)
 
         torch.onnx.export(
-            traced, *adapter.flattened_inputs, "rwip_model_rewfn4_nodr_bestrwip.onnx", 
+            traced, *adapter.flattened_inputs, "rwip_model_rewfn1_nodr_bestrwip.onnx", 
             verbose=True, input_names=['obs'], 
             output_names=['mu', 'log_std', 'value']
             )
