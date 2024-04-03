@@ -97,3 +97,17 @@ sim:
     # per-shape
     contact_offset: 0.02
     rest_offset: 0.001
+
+domain_randomization:
+  randomize: False
+  randomization_params:
+    observations:
+      on_reset:
+        operation: "additive"
+        distribution: "gaussian"
+        distribution_parameters: [0, .0001]
+      on_interval:
+        frequency_interval: 2
+        operation: "additive"
+        distribution: "gaussian"
+        distribution_parameters: [0, .002]

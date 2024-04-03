@@ -6,12 +6,14 @@ from typing import Optional
 import matplotlib.pyplot as plt
 import onnxruntime as ort
 
+import omni
 from omni.isaac.core.robots.robot import Robot
 from omni.isaac.core.utils.stage import add_reference_to_stage
 from omni.isaac.core.articulations import ArticulationView
 from omni.isaac.core.utils.prims import get_prim_at_path
 
 from omniisaacgymenvs.tasks.base.rl_task import RLTask
+from omniisaacgymenvs.utils.domain_randomization.randomize import Randomizer
 
 EPS = 1e-6
 
@@ -46,6 +48,17 @@ class RWIPTask(RLTask):
         self._num_observations = 3
         self._num_actions = 1
         RLTask.__init__(self, name, env)
+        if self.randomize: 
+            # self._observations_correlated_noise = torch.zeros(
+            # (self._num_envs, self._num_observations), device=self._cfg["rl_device"]
+            # )
+            self._observations_correlated_noise = torch.normal(
+                mean=0,
+                std=0.1,
+                size=(self._num_envs, self._num_observations),
+                device=self._cfg["rl_device"],
+            )
+            print("INITIAL CORRELATED NOISE: ", self._observations_correlated_noise)
         return
 
     def update_config(self, sim_config):
@@ -60,6 +73,9 @@ class RWIPTask(RLTask):
         self._max_effort = self._task_cfg["env"]["maxEffort"]
 
         self.dt = self._task_cfg["sim"]["dt"]
+
+        self.randomize = self._task_cfg['domain_randomization']['randomize']        
+        print("ADD RANDOMIZATION? ", self.randomize)
 
     def set_up_scene(self, scene) -> None:
         self.get_rwip()
@@ -89,6 +105,16 @@ class RWIPTask(RLTask):
         self.obs_buf[:, 1] = self.axis_pos
         self.obs_buf[:, 2] = self.axis_vel
 
+        if self.randomize:
+            _observations_uncorrelated_noise = torch.normal(
+                    mean=0,
+                    std=0.005,
+                    size=(self._num_envs, self._num_observations),
+                    device=self._cfg["rl_device"],
+                )
+            self.obs_buf += self._observations_correlated_noise
+            self.obs_buf += _observations_uncorrelated_noise
+        
         observations = {self._rwips.name: {"obs_buf": self.obs_buf}}
         return observations
 
@@ -98,6 +124,13 @@ class RWIPTask(RLTask):
         reset_env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
         if len(reset_env_ids) > 0:
             self.reset_idx(reset_env_ids)
+            if self.randomize:
+                self._observations_correlated_noise[reset_env_ids] = torch.normal(
+                        mean=0,
+                        std=0.1,
+                        size=(len(reset_env_ids), self._num_observations),
+                        device=self._cfg["rl_device"],
+                    )
         
         actions = actions.to(self._device)
         forces = torch.zeros((self._rwips.count, self._rwips.num_dof), dtype=torch.float32, device=self._device)
@@ -140,8 +173,8 @@ class RWIPTask(RLTask):
         self.reset_idx(indices)
 
     def calculate_metrics(self) -> None:
-
-        reward = 1.0 - torch.abs(torch.tanh(8*self.axis_pos)) - 0.1 * torch.squeeze(torch.abs(torch.mean(self.torque_buffer, dim=0)), dim=1)
+        reward = 1.0 - torch.abs(torch.tanh(4*self.axis_pos)) - 0.01 * torch.abs(self.rxnwheel_vel) * torch.abs(torch.tanh(3*self.axis_pos))
+        # reward = 1.0 - torch.abs(torch.tanh(8*self.axis_pos)) - 0.1 * torch.squeeze(torch.abs(torch.mean(self.torque_buffer, dim=0)), dim=1)
         # If we end up outside reset distance, penalize the reward
         reward = torch.where(torch.abs(self.axis_pos) > 0.5, torch.ones_like(reward) * -5.0, reward)
         self.rew_buf[:] = reward
