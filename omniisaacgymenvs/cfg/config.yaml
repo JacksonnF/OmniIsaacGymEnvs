@@ -58,11 +58,11 @@ recording_fps: 30
 # directory to save recordings in
 recording_dir: ''
 
-wandb_activate: False
-wandb_group: ''
-wandb_name: ${train.params.config.name}
-wandb_entity: ''
-wandb_project: 'omniisaacgymenvs'
+wandb_activate: True
+wandb_group: 'reward_eqn4'
+wandb_name: '0_6-maxtorque_dr-obs0_005maxstd_take2'
+wandb_entity: '2411-rl-unicycle'
+wandb_project: 'RWIP'
 
 # path to a kit app file
 kit_app: ''
