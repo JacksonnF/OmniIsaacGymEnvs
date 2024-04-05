@@ -22,7 +22,7 @@ params:
           val: 0
         fixed_sigma: True
     mlp:
-      units: [32, 32]
+      units: [64, 32]
       activation: elu
 
       initializer:
@@ -53,10 +53,10 @@ params:
     learning_rate: 3e-4
     lr_schedule: adaptive
     kl_threshold: 0.008
-    score_to_win: 20000
+    score_to_win: 200000
     max_epochs: ${resolve_default:1000,${....max_iterations}}
     save_best_after: 100
-    save_frequency: 50
+    save_frequency: 25
     grad_norm: 1.0
     entropy_coef: 0.0
     truncate_grads: True
