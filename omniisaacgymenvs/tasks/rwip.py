@@ -15,6 +15,8 @@ from omni.isaac.core.utils.prims import get_prim_at_path
 from omniisaacgymenvs.tasks.base.rl_task import RLTask
 from omniisaacgymenvs.utils.domain_randomization.randomize import Randomizer
 
+import wandb
+
 EPS = 1e-6
 
 class RWIP(Robot):
@@ -54,7 +56,7 @@ class RWIPTask(RLTask):
             # )
             self._observations_correlated_noise = torch.normal(
                 mean=0,
-                std=0.005,
+                std=0.01,
                 size=(self._num_envs, self._num_observations),
                 device=self._cfg["rl_device"],
             )
@@ -108,7 +110,7 @@ class RWIPTask(RLTask):
         if self.randomize:
             _observations_uncorrelated_noise = torch.normal(
                     mean=0,
-                    std=0.0001,
+                    std=0.001,
                     size=(self._num_envs, self._num_observations),
                     device=self._cfg["rl_device"],
                 )
@@ -127,7 +129,7 @@ class RWIPTask(RLTask):
             if self.randomize:
                 self._observations_correlated_noise[reset_env_ids] = torch.normal(
                         mean=0,
-                        std=0.005,
+                        std=0.01,
                         size=(len(reset_env_ids), self._num_observations),
                         device=self._cfg["rl_device"],
                     )
@@ -173,10 +175,14 @@ class RWIPTask(RLTask):
         self.reset_idx(indices)
 
     def calculate_metrics(self) -> None:
-        reward = 1.0 - torch.abs(torch.tanh(4*self.axis_pos)) - 0.01 * torch.abs(self.rxnwheel_vel) * torch.abs(torch.tanh(3*self.axis_pos))
-        # reward = 1.0 - torch.abs(torch.tanh(8*self.axis_pos)) - 0.1 * torch.squeeze(torch.abs(torch.mean(self.torque_buffer, dim=0)), dim=1)
+        # reward = 1.0 - torch.abs(torch.tanh(4*self.axis_pos)) - 0.01 * torch.abs(self.rxnwheel_vel) * torch.abs(torch.tanh(2*self.axis_pos))
+        # reward = 1.0 - torch.abs(torch.tanh(2*self.axis_pos)) - 0.1 * torch.squeeze(torch.abs(torch.mean(self.torque_buffer, dim=0)), dim=1) - 0.005*torch.abs(self.rxnwheel_vel)
         # If we end up outside reset distance, penalize the reward
-        reward = torch.where(torch.abs(self.axis_pos) > 0.5, torch.ones_like(reward) * -5.0, reward)
+        wandb.log({"Angle Rew Term": ((self.axis_pos.detach().numpy())/(np.pi/2))**4, 
+                   "Vel Term": (0.01* self.rxnwheel_vel.detach().numpy())**4, 
+                   "Torque Term": 0.1 * torch.squeeze(torch.abs(torch.mean(self.torque_buffer, dim=0)).detach().numpy(), dim=1)})
+        reward = 1.0 - ((self.axis_pos)/(np.pi/2))**4 - (0.01* self.rxnwheel_vel)**4 - 0.1 * torch.squeeze(torch.abs(torch.mean(self.torque_buffer, dim=0)), dim=1)
+        reward = torch.where(torch.abs(self.axis_pos) > 0.5, torch.ones_like(reward) * -10.0, reward)
         self.rew_buf[:] = reward
 
     def is_done(self) -> None:
