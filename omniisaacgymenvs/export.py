@@ -139,7 +139,7 @@ class RLGTrainer:
             print(flattened_outputs)
 
         torch.onnx.export(
-            traced, *adapter.flattened_inputs, "rwip_w_stalltorque_dr.onnx", 
+            traced, *adapter.flattened_inputs, "rwip_dr_no_torquepenalty.onnx", 
             verbose=True, input_names=['obs'], 
             output_names=['mu', 'log_std', 'value']
             )

@@ -59,8 +59,8 @@ recording_fps: 30
 recording_dir: ''
 
 wandb_activate: True
-wandb_group: 'reward_eqn_goat'
-wandb_name: 'no_dr_torquecurve_stalltorque'
+wandb_group: 'aprl7tests'
+wandb_name: 'aggresive_v_actobsdr'
 wandb_entity: '2411-rl-unicycle'
 wandb_project: 'RWIP'
 
