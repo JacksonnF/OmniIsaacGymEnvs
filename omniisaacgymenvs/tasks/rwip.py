@@ -60,6 +60,12 @@ class RWIPTask(RLTask):
                 size=(self._num_envs, self._num_observations),
                 device=self._cfg["rl_device"],
             )
+            self._actions_correlated_noise = torch.normal(
+                mean=0,
+                std=0.001,
+                size=(self._num_envs, self._num_actions),
+                device=self._cfg["rl_device"],
+            )
             print("INITIAL CORRELATED NOISE: ", self._observations_correlated_noise)
         return
 
@@ -134,6 +140,12 @@ class RWIPTask(RLTask):
                         size=(len(reset_env_ids), self._num_observations),
                         device=self._cfg["rl_device"],
                     )
+                self._actions_correlated_noise = torch.normal(
+                    mean=0,
+                    std=0.001,
+                    size=(self._num_envs, self._num_actions),
+                    device=self._cfg["rl_device"],
+                )
         
         actions = actions.to(self._device)
         forces = torch.zeros((self._rwips.count, self._rwips.num_dof), dtype=torch.float32, device=self._device)
@@ -144,6 +156,8 @@ class RWIPTask(RLTask):
             t = self._max_effort
 
         forces[:, self._rxnwheel_dof_idx] = torch.clamp(t * actions[:, 0], -self._max_effort, self._max_effort)
+        if self.randomize:
+            forces[:, self._rxnwheel_dof_idx] += self._actions_correlated_noise
         
         self.torque_buffer = torch.roll(self.torque_buffer, -1, dims=0)
         self.torque_buffer[-1] = forces[:, self._rxnwheel_dof_idx].unsqueeze(-1)
