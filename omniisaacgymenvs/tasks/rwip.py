@@ -45,7 +45,7 @@ class RWIP(Robot):
 class RWIPTask(RLTask):
     def __init__(self, name, sim_config, env, offset=None) -> None:
         self.update_config(sim_config)
-        self._max_episode_length = 500
+        self._max_episode_length = 350
 
         self._num_observations = 3
         self._num_actions = 1
@@ -73,6 +73,7 @@ class RWIPTask(RLTask):
         self._cartpole_positions = torch.tensor([0.0, 0.0, 2.0])
 
         self._max_effort = self._task_cfg["env"]["maxEffort"]
+        self._stall_torque = self._task_cfg["env"]["stallTorque"]
 
         self.dt = self._task_cfg["sim"]["dt"]
 
@@ -90,7 +91,7 @@ class RWIPTask(RLTask):
         return
 
     def get_rwip(self):
-        rwip = RWIP(prim_path=self.default_zero_env_path + "/RWIP", usd_path="/home/fizzer/Documents/unicycle_08/RWIP_SIM_TEST_ZEROED.usd", name="RWIP")
+        rwip = RWIP(prim_path=self.default_zero_env_path + "/RWIP", usd_path="/home/fizzer/Documents/unicycle_08/RWIP_SIM_TEST_v5.usd", name="RWIP")
         self._sim_config.apply_articulation_settings(
             "RWIP", get_prim_at_path(self.default_zero_env_path + "/RWIP"+"/RWIP_SIM_TEST"), self._sim_config.parse_actor_config("RWIP")
         )
@@ -136,13 +137,20 @@ class RWIPTask(RLTask):
         
         actions = actions.to(self._device)
         forces = torch.zeros((self._rwips.count, self._rwips.num_dof), dtype=torch.float32, device=self._device)
-        forces[:, self._rxnwheel_dof_idx] = torch.clamp(self._max_effort * actions[:, 0], -self._max_effort, self._max_effort)
+
+        try:
+            t = self._stall_torque - self._stall_torque * torch.abs(self.rxnwheel_vel) / (45 * 2 * np.pi)
+        except:
+            t = self._max_effort
+
+        forces[:, self._rxnwheel_dof_idx] = torch.clamp(t * actions[:, 0], -self._max_effort, self._max_effort)
         
         self.torque_buffer = torch.roll(self.torque_buffer, -1, dims=0)
         self.torque_buffer[-1] = forces[:, self._rxnwheel_dof_idx].unsqueeze(-1)
 
         indices = torch.arange(self._rwips.count, dtype=torch.int32, device=self._device)
         self._rwips.set_joint_efforts(forces, indices=indices)
+
 
     def reset_idx(self, env_ids) -> None:
         num_resets = len(env_ids)
@@ -178,10 +186,15 @@ class RWIPTask(RLTask):
         # reward = 1.0 - torch.abs(torch.tanh(4*self.axis_pos)) - 0.01 * torch.abs(self.rxnwheel_vel) * torch.abs(torch.tanh(2*self.axis_pos))
         # reward = 1.0 - torch.abs(torch.tanh(2*self.axis_pos)) - 0.1 * torch.squeeze(torch.abs(torch.mean(self.torque_buffer, dim=0)), dim=1) - 0.005*torch.abs(self.rxnwheel_vel)
         # If we end up outside reset distance, penalize the reward
-        wandb.log({"Angle Rew Term": ((self.axis_pos.detach().numpy())/(np.pi/2))**4, 
-                   "Vel Term": (0.01* self.rxnwheel_vel.detach().numpy())**4, 
-                   "Torque Term": 0.1 * torch.squeeze(torch.abs(torch.mean(self.torque_buffer, dim=0)).detach().numpy(), dim=1)})
-        reward = 1.0 - ((self.axis_pos)/(np.pi/2))**4 - (0.01* self.rxnwheel_vel)**4 - 0.1 * torch.squeeze(torch.abs(torch.mean(self.torque_buffer, dim=0)), dim=1)
+        angle_term = ((self.axis_pos)/(np.pi/2))**4
+        vel_term = (0.01* self.rxnwheel_vel)**4
+        torque_term = 0.1 * torch.squeeze(torch.abs(torch.mean(self.torque_buffer, dim=0)), dim=1)
+
+        # wandb.log({"Angle Rew Term": angle_term.cpu().detach().numpy(), 
+        #            "Vel Term": vel_term.cpu().detach().numpy(), 
+        #            "Torque Term": torque_term.cpu().detach().numpy() })
+        
+        reward = 1.0 - angle_term - vel_term - torque_term
         reward = torch.where(torch.abs(self.axis_pos) > 0.5, torch.ones_like(reward) * -10.0, reward)
         self.rew_buf[:] = reward
 
