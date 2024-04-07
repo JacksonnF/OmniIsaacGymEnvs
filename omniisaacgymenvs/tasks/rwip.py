@@ -158,6 +158,7 @@ class RWIPTask(RLTask):
             t = self._max_effort
 
         forces[:, self._rxnwheel_dof_idx] = torch.clamp(t * actions[:, 0], -self._max_effort, self._max_effort)
+        # print("TORQUE: ", forces[0, self._rxnwheel_dof_idx].cpu().detach().numpy())
         if self.randomize:
             forces[:, self._rxnwheel_dof_idx] += self._actions_correlated_noise.squeeze(1)
         
@@ -204,16 +205,16 @@ class RWIPTask(RLTask):
         # If we end up outside reset distance, penalize the reward
         angle_term = ((self.axis_pos)/(np.pi/2))**4
         vel_term = (0.01* self.rxnwheel_vel)**2
-        # torque_term = 0.1 * torch.squeeze(torch.abs(torch.mean(self.torque_buffer, dim=0)), dim=1)
+        torque_term = 0.5 * torch.squeeze(torch.abs(torch.mean(self.torque_buffer, dim=0)), dim=1)
         # print("ANGLE:", angle_term.cpu().detach().numpy(), "VEL_TERM", vel_term.cpu().detach().numpy(), "TORQUE TERM", torque_term.cpu().detach().numpy())
 
-        if self._log_wandb:
-            wandb.log({"Angle Rew Term": angle_term.cpu().detach().numpy(), 
-                    "Vel Term": vel_term.cpu().detach().numpy(), 
+        # if self._log_wandb:
+            # wandb.log({"Angle Rew Term": angle_term.cpu().detach().numpy(), 
+                    # "Vel Term": vel_term.cpu().detach().numpy(), 
                     # "Torque Term": torque_term.cpu().detach().numpy() 
-                    })
+                    # })
         
-        reward = 1.0 - angle_term - vel_term 
+        reward = 1.0 - angle_term - vel_term - torque_term
         reward = torch.where(torch.abs(self.axis_pos) > 0.5, torch.ones_like(reward) * -10.0, reward)
         self.rew_buf[:] = reward
 
