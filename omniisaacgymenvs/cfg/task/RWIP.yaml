@@ -11,7 +11,7 @@ env:
   # spacing between each environment (in meters)
   envSpacing: 3.0
   # effort scaling
-  maxEffort: 0.6
+  maxEffort: 0.8
   # perform 2 simulation steps for every action (applies actions every 2 simulation steps)
   controlFrequencyInv: 2 # 2
 
@@ -101,7 +101,7 @@ sim:
     rest_offset: 0.001
 
 domain_randomization:
-  randomize: False
+  randomize: True
   randomization_params:
     observations:
       on_reset:
