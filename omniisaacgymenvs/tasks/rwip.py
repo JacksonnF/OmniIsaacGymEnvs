@@ -73,6 +73,7 @@ class RWIPTask(RLTask):
         self._cartpole_positions = torch.tensor([0.0, 0.0, 2.0])
 
         self._max_effort = self._task_cfg["env"]["maxEffort"]
+        self._stall_torque = self._task_cfg["env"]["stallTorque"]
 
         self.dt = self._task_cfg["sim"]["dt"]
 
@@ -136,13 +137,20 @@ class RWIPTask(RLTask):
         
         actions = actions.to(self._device)
         forces = torch.zeros((self._rwips.count, self._rwips.num_dof), dtype=torch.float32, device=self._device)
-        forces[:, self._rxnwheel_dof_idx] = torch.clamp(self._max_effort * actions[:, 0], -self._max_effort, self._max_effort)
+
+        try:
+            t = self._stall_torque - self._stall_torque * torch.abs(self.rxnwheel_vel) / (45 * 2 * np.pi)
+        except:
+            t = self._max_effort
+
+        forces[:, self._rxnwheel_dof_idx] = torch.clamp(t * actions[:, 0], -self._max_effort, self._max_effort)
         
         self.torque_buffer = torch.roll(self.torque_buffer, -1, dims=0)
         self.torque_buffer[-1] = forces[:, self._rxnwheel_dof_idx].unsqueeze(-1)
 
         indices = torch.arange(self._rwips.count, dtype=torch.int32, device=self._device)
         self._rwips.set_joint_efforts(forces, indices=indices)
+
 
     def reset_idx(self, env_ids) -> None:
         num_resets = len(env_ids)
@@ -181,10 +189,10 @@ class RWIPTask(RLTask):
         angle_term = ((self.axis_pos)/(np.pi/2))**4
         vel_term = (0.01* self.rxnwheel_vel)**4
         torque_term = 0.1 * torch.squeeze(torch.abs(torch.mean(self.torque_buffer, dim=0)), dim=1)
-        
-        wandb.log({"Angle Rew Term": angle_term.cpu().detach().numpy(), 
-                   "Vel Term": vel_term.cpu().detach().numpy(), 
-                   "Torque Term": torque_term.cpu().detach().numpy() })
+
+        # wandb.log({"Angle Rew Term": angle_term.cpu().detach().numpy(), 
+        #            "Vel Term": vel_term.cpu().detach().numpy(), 
+        #            "Torque Term": torque_term.cpu().detach().numpy() })
         
         reward = 1.0 - angle_term - vel_term - torque_term
         reward = torch.where(torch.abs(self.axis_pos) > 0.5, torch.ones_like(reward) * -10.0, reward)

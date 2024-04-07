@@ -60,7 +60,7 @@ recording_dir: ''
 
 wandb_activate: True
 wandb_group: 'reward_eqn_goat'
-wandb_name: 'no_dr'
+wandb_name: 'no_dr_torquecurve_stalltorque'
 wandb_entity: '2411-rl-unicycle'
 wandb_project: 'RWIP'
 

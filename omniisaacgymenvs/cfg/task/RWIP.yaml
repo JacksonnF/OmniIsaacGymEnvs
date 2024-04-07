@@ -15,6 +15,8 @@ env:
   # perform 2 simulation steps for every action (applies actions every 2 simulation steps)
   controlFrequencyInv: 2 # 2
 
+  stallTorque: 2.0 
+
   enablePlotting: False
 
 # simulation related parameters
