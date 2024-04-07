@@ -60,7 +60,7 @@ recording_dir: ''
 
 wandb_activate: True
 wandb_group: 'reward_eqn_goat'
-wandb_name: 'dr_0_01std'
+wandb_name: 'no_dr'
 wandb_entity: '2411-rl-unicycle'
 wandb_project: 'RWIP'
 

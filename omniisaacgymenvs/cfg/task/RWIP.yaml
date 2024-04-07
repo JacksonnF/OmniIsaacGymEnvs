@@ -99,7 +99,7 @@ sim:
     rest_offset: 0.001
 
 domain_randomization:
-  randomize: True
+  randomize: False
   randomization_params:
     observations:
       on_reset:
