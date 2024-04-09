@@ -139,7 +139,7 @@ class RLGTrainer:
             print(flattened_outputs)
 
         torch.onnx.export(
-            traced, *adapter.flattened_inputs, "harsher_v_pen.onnx", 
+            traced, *adapter.flattened_inputs, "2_v_pen.onnx", 
             verbose=True, input_names=['obs'], 
             output_names=['mu', 'log_std', 'value']
             )

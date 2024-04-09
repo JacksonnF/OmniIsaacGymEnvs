@@ -204,7 +204,7 @@ class RWIPTask(RLTask):
         # reward = 1.0 - torch.abs(torch.tanh(2*self.axis_pos)) - 0.1 * torch.squeeze(torch.abs(torch.mean(self.torque_buffer, dim=0)), dim=1) - 0.005*torch.abs(self.rxnwheel_vel)
         # If we end up outside reset distance, penalize the reward
         angle_term = ((self.axis_pos)/(np.pi/2))**4
-        vel_term = (0.01* self.rxnwheel_vel)**2
+        vel_term = 2 * (0.01* self.rxnwheel_vel)**2
         torque_term = 0.5 * torch.squeeze(torch.abs(torch.mean(self.torque_buffer, dim=0)), dim=1)
         # print("ANGLE:", angle_term.cpu().detach().numpy(), "VEL_TERM", vel_term.cpu().detach().numpy(), "TORQUE TERM", torque_term.cpu().detach().numpy())
 
