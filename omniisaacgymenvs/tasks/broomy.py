@@ -2,6 +2,7 @@ import math
 import torch
 import numpy as np
 from typing import Optional
+
 # import pandas as pd
 import matplotlib.pyplot as plt
 import onnxruntime as ort
@@ -18,6 +19,7 @@ from omniisaacgymenvs.utils.domain_randomization.randomize import Randomizer
 import wandb
 
 EPS = 1e-6
+
 
 class Broomy(Robot):
     def __init__(
@@ -41,7 +43,8 @@ class Broomy(Robot):
             orientation=orientation,
             articulation_controller=None,
         )
-    
+
+
 class BroomyTask(RLTask):
     def __init__(self, name, sim_config, env, offset=None) -> None:
         self.update_config(sim_config)
@@ -50,7 +53,7 @@ class BroomyTask(RLTask):
         self._num_observations = 14
         self._num_actions = 2
         RLTask.__init__(self, name, env)
-        if self.randomize: 
+        if self.randomize:
             self._observations_correlated_noise = torch.normal(
                 mean=0,
                 std=0.01,
@@ -80,25 +83,33 @@ class BroomyTask(RLTask):
 
         self.dt = self._task_cfg["sim"]["dt"]
 
-        self.randomize = self._task_cfg['domain_randomization']['randomize']        
+        self.randomize = self._task_cfg["domain_randomization"]["randomize"]
         print("ADD RANDOMIZATION? ", self.randomize)
 
-        self._log_wandb = self._cfg['wandb_activate']
+        self._log_wandb = self._cfg["wandb_activate"]
 
     def set_up_scene(self, scene) -> None:
         self.get_broomy()
         super().set_up_scene(scene)
         self._broomys = ArticulationView(
-            prim_paths_expr="/World/envs/.*/RWIP/RWIP_SIM_TEST", name="rwip_view", reset_xform_properties=False
+            prim_paths_expr="/World/envs/.*/RWIP/RWIP_SIM_TEST",
+            name="rwip_view",
+            reset_xform_properties=False,
         )
         scene.add(self._broomys)
         self.torque_buffer = torch.zeros(10, self._num_envs, 1, device=self._device)
         return
 
     def get_broomy(self):
-        rwip = Broomy(prim_path=self.default_zero_env_path + "/RWIP", usd_path="/home/fizzer/Documents/unicycle_08/RWIP_SIM_TEST_v5.usd", name="RWIP")
+        rwip = Broomy(
+            prim_path=self.default_zero_env_path + "/RWIP",
+            usd_path="/home/fizzer/Documents/unicycle_08/RWIP_SIM_TEST_v5.usd",
+            name="RWIP",
+        )
         self._sim_config.apply_articulation_settings(
-            "RWIP", get_prim_at_path(self.default_zero_env_path + "/RWIP"+"/RWIP_SIM_TEST"), self._sim_config.parse_actor_config("RWIP")
+            "RWIP",
+            get_prim_at_path(self.default_zero_env_path + "/RWIP" + "/RWIP_SIM_TEST"),
+            self._sim_config.parse_actor_config("RWIP"),
         )
 
     def get_observations(self) -> dict:
@@ -108,24 +119,24 @@ class BroomyTask(RLTask):
 
         roll_vel = dof_vel[:, self._roll_dof_index]
         pitch_vel = dof_vel[:, self._pitch_dof_index]
-        posns_from_start = root_pos - self._env_pos
+        posns_from_start = self.root_pos - self._env_pos
 
         self.obs_buf[:, 0] = roll_vel
         self.obs_buf[:, 1] = pitch_vel
         self.obs_buf[..., 2:5] = posns_from_start
-        self.obs_buf[..., 5:9] = root_quats
+        self.obs_buf[..., 5:9] = self.root_quats
         self.obs_buf[..., 9:15] = root_velocities
 
         if self.randomize:
             _observations_uncorrelated_noise = torch.normal(
-                    mean=0,
-                    std=0.001,
-                    size=(self._num_envs, self._num_observations),
-                    device=self._cfg["rl_device"],
-                )
+                mean=0,
+                std=0.001,
+                size=(self._num_envs, self._num_observations),
+                device=self._cfg["rl_device"],
+            )
             self.obs_buf += self._observations_correlated_noise
             self.obs_buf += _observations_uncorrelated_noise
-        
+
         observations = {self._rwips.name: {"obs_buf": self.obs_buf}}
         return observations
 
@@ -137,29 +148,41 @@ class BroomyTask(RLTask):
             self.reset_idx(reset_env_ids)
             if self.randomize:
                 self._observations_correlated_noise[reset_env_ids] = torch.normal(
-                        mean=0,
-                        std=0.01,
-                        size=(len(reset_env_ids), self._num_observations),
-                        device=self._cfg["rl_device"],
-                    )
+                    mean=0,
+                    std=0.01,
+                    size=(len(reset_env_ids), self._num_observations),
+                    device=self._cfg["rl_device"],
+                )
                 self._actions_correlated_noise = torch.normal(
                     mean=0,
                     std=0.001,
                     size=(self._num_envs, self._num_actions),
                     device=self._cfg["rl_device"],
                 )
-        
-        actions = actions.to(self._device)
-        forces = torch.zeros((self._broomys.count, self._num_actions), dtype=torch.float32, device=self._device)
 
-        forces[:, self._roll_dof_index] = torch.clamp(self._max_effort * actions[:, 0], -self._max_effort, self._max_effort)
-        forces[:, self._pitch_dof_index] = torch.clamp(self._max_effort * actions[:, 1], -self._max_effort, self._max_effort)
+        actions = actions.to(self._device)
+        forces = torch.zeros(
+            (self._broomys.count, self._num_actions),
+            dtype=torch.float32,
+            device=self._device,
+        )
+
+        forces[:, self._roll_dof_index] = torch.clamp(
+            self._max_effort * actions[:, 0], -self._max_effort, self._max_effort
+        )
+        forces[:, self._pitch_dof_index] = torch.clamp(
+            self._max_effort * actions[:, 1], -self._max_effort, self._max_effort
+        )
 
         if self.randomize:
             forces[:, self._roll_dof_index] += self._actions_correlated_noise.squeeze(1)
-            forces[:, self._pitch_dof_index] += self._actions_correlated_noise.squeeze(1)
+            forces[:, self._pitch_dof_index] += self._actions_correlated_noise.squeeze(
+                1
+            )
 
-        indices = torch.arange(self._broomys.count, dtype=torch.int32, device=self._device)
+        indices = torch.arange(
+            self._broomys.count, dtype=torch.int32, device=self._device
+        )
         self._broomys.set_joint_efforts(forces, indices=indices)
 
     def reset_idx(self, env_ids) -> None:
@@ -174,7 +197,11 @@ class BroomyTask(RLTask):
         self._broomys.set_joint_positions(dof_pos, indices=indices)
         self._broomys.set_joint_velocities(dof_vel, indices=indices)
 
-        self._broomys.set_world_poses(self.initial_root_pos[env_ids].clone(), self.initial_root_rot[env_ids].clone(), indices=env_ids)
+        self._broomys.set_world_poses(
+            self.initial_root_pos[env_ids].clone(),
+            self.initial_root_rot[env_ids].clone(),
+            indices=env_ids,
+        )
         self._broomys.set_velocities(root_velocities[env_ids], indices=env_ids)
 
         # bookkeeping
@@ -188,13 +215,18 @@ class BroomyTask(RLTask):
 
         # Save for comoputing reset posn later
         root_pos, root_rot = self._broomys.get_world_poses(clone=False)
-        self.initial_root_pos, self.initial_root_rot = root_pos.clone(), root_rot.clone()
+        self.initial_root_pos, self.initial_root_rot = (
+            root_pos.clone(),
+            root_rot.clone(),
+        )
 
         # randomize all envs
-        indices = torch.arange(self._broomys.count, dtype=torch.int64, device=self._device)
+        indices = torch.arange(
+            self._broomys.count, dtype=torch.int64, device=self._device
+        )
         self.reset_idx(indices)
 
-    def calculate_metrics(self) -> None:   
+    def calculate_metrics(self) -> None:
         # uprightness
         root_quats = self.root_quats
         ups = quat_axis(root_quats, 2)
