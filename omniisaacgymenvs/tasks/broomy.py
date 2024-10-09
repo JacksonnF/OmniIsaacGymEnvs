@@ -5,7 +5,6 @@ from typing import Optional
 
 # import pandas as pd
 import matplotlib.pyplot as plt
-import onnxruntime as ort
 
 import omni
 from omni.isaac.core.robots.robot import Robot
@@ -16,7 +15,6 @@ from omni.isaac.core.utils.prims import get_prim_at_path
 from omniisaacgymenvs.tasks.base.rl_task import RLTask
 from omniisaacgymenvs.utils.domain_randomization.randomize import Randomizer
 
-import wandb
 
 EPS = 1e-6
 
@@ -26,7 +24,7 @@ class Broomy(Robot):
         self,
         prim_path: str,
         usd_path: str,
-        name: Optional[str] = "RWIP",
+        name: Optional[str] = "BROOMY",
         translation: Optional[np.ndarray] = None,
         orientation: Optional[np.ndarray] = None,
     ) -> None:
@@ -92,8 +90,8 @@ class BroomyTask(RLTask):
         self.get_broomy()
         super().set_up_scene(scene)
         self._broomys = ArticulationView(
-            prim_paths_expr="/World/envs/.*/RWIP/RWIP_SIM_TEST",
-            name="rwip_view",
+            prim_paths_expr="/World/envs/.*/Broomy/top_level_broomy_sim",
+            name="broomy_view",
             reset_xform_properties=False,
         )
         scene.add(self._broomys)
@@ -102,14 +100,16 @@ class BroomyTask(RLTask):
 
     def get_broomy(self):
         rwip = Broomy(
-            prim_path=self.default_zero_env_path + "/RWIP",
-            usd_path="/home/fizzer/Documents/unicycle_08/RWIP_SIM_TEST_v5.usd",
-            name="RWIP",
+            prim_path=self.default_zero_env_path + "/Broomy",
+            usd_path="/home/fizzer/Documents/unicycle_08/top_level_broomy_sim.usd",
+            name="Broomy",
         )
         self._sim_config.apply_articulation_settings(
-            "RWIP",
-            get_prim_at_path(self.default_zero_env_path + "/RWIP" + "/RWIP_SIM_TEST"),
-            self._sim_config.parse_actor_config("RWIP"),
+            "Broomy",
+            get_prim_at_path(
+                self.default_zero_env_path + "/Broomy" + "/top_level_broomy_sim"
+            ),
+            self._sim_config.parse_actor_config("Broomy"),
         )
 
     def get_observations(self) -> dict:
@@ -137,7 +137,7 @@ class BroomyTask(RLTask):
             self.obs_buf += self._observations_correlated_noise
             self.obs_buf += _observations_uncorrelated_noise
 
-        observations = {self._rwips.name: {"obs_buf": self.obs_buf}}
+        observations = {self._broomys.name: {"obs_buf": self.obs_buf}}
         return observations
 
     def pre_physics_step(self, actions) -> None:
@@ -210,8 +210,8 @@ class BroomyTask(RLTask):
 
     def post_reset(self) -> None:
         print("DOF Names: ", self._broomys.dof_names)
-        self._roll_dof_index = self._broomys.get_dof_index("dof_roll")
-        self._pitch_dof_index = self._broomys.get_dof_index("dof_pitch")
+        self._roll_dof_index = self._broomys.get_dof_index("Revolute_1")
+        self._pitch_dof_index = self._broomys.get_dof_index("Revolute_1_01")
 
         # Save for comoputing reset posn later
         root_pos, root_rot = self._broomys.get_world_poses(clone=False)
