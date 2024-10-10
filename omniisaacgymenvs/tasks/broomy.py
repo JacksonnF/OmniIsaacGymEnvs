@@ -11,6 +11,7 @@ from omni.isaac.core.robots.robot import Robot
 from omni.isaac.core.utils.stage import add_reference_to_stage
 from omni.isaac.core.articulations import ArticulationView
 from omni.isaac.core.utils.prims import get_prim_at_path
+from omni.isaac.core.utils.torch.rotations import *
 
 from omniisaacgymenvs.tasks.base.rl_task import RLTask
 from omniisaacgymenvs.utils.domain_randomization.randomize import Randomizer
@@ -48,7 +49,7 @@ class BroomyTask(RLTask):
         self.update_config(sim_config)
         self._max_episode_length = 350
 
-        self._num_observations = 14
+        self._num_observations = 15
         self._num_actions = 2
         RLTask.__init__(self, name, env)
         if self.randomize:
@@ -74,7 +75,7 @@ class BroomyTask(RLTask):
 
         self._num_envs = self._task_cfg["env"]["numEnvs"]
         self._env_spacing = self._task_cfg["env"]["envSpacing"]
-        self._cartpole_positions = torch.tensor([0.0, 0.0, 2.0])
+        self._cartpole_positions = torch.tensor([0.0, 0.0, 1.0])
 
         self._max_effort = self._task_cfg["env"]["maxEffort"]
         self._stall_torque = self._task_cfg["env"]["stallTorque"]
@@ -99,9 +100,9 @@ class BroomyTask(RLTask):
         return
 
     def get_broomy(self):
-        rwip = Broomy(
+        broomy = Broomy(
             prim_path=self.default_zero_env_path + "/Broomy",
-            usd_path="/home/fizzer/Documents/unicycle_08/top_level_broomy_sim.usd",
+            usd_path="/home/fizzer/Documents/unicycle_29/top_level_broomy_sim.usd",
             name="Broomy",
         )
         self._sim_config.apply_articulation_settings(
@@ -115,7 +116,7 @@ class BroomyTask(RLTask):
     def get_observations(self) -> dict:
         self.root_pos, self.root_quats = self._broomys.get_world_poses(clone=False)
         dof_vel = self._broomys.get_joint_velocities(clone=False)
-        root_velocities = self._broomys.get_velocities(clone=False)
+        self.root_velocities = self._broomys.get_velocities(clone=False)
 
         roll_vel = dof_vel[:, self._roll_dof_index]
         pitch_vel = dof_vel[:, self._pitch_dof_index]
@@ -125,7 +126,7 @@ class BroomyTask(RLTask):
         self.obs_buf[:, 1] = pitch_vel
         self.obs_buf[..., 2:5] = posns_from_start
         self.obs_buf[..., 5:9] = self.root_quats
-        self.obs_buf[..., 9:15] = root_velocities
+        self.obs_buf[..., 9:16] = self.root_velocities
 
         if self.randomize:
             _observations_uncorrelated_noise = torch.normal(
@@ -160,7 +161,7 @@ class BroomyTask(RLTask):
                     device=self._cfg["rl_device"],
                 )
 
-        actions = actions.to(self._device)
+        self.actions = actions.to(self._device)
         forces = torch.zeros(
             (self._broomys.count, self._num_actions),
             dtype=torch.float32,
@@ -190,8 +191,8 @@ class BroomyTask(RLTask):
 
         dof_pos = torch.zeros((num_resets, self._broomys.num_dof), device=self._device)
         dof_vel = torch.zeros((num_resets, self._broomys.num_dof), device=self._device)
-        root_velocities = torch.zeros((num_resets, 6), device=self._device)
-
+        root_velocities = self.root_velocities.clone()
+        root_velocities[env_ids] = 0
         # apply resets
         indices = env_ids.to(dtype=torch.int32)
         self._broomys.set_joint_positions(dof_pos, indices=indices)
@@ -215,6 +216,7 @@ class BroomyTask(RLTask):
 
         # Save for comoputing reset posn later
         root_pos, root_rot = self._broomys.get_world_poses(clone=False)
+        self.root_velocities = self._broomys.get_velocities(clone=False)
         self.initial_root_pos, self.initial_root_rot = (
             root_pos.clone(),
             root_rot.clone(),

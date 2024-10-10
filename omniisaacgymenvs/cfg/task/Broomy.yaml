@@ -1,5 +1,5 @@
 # name of the task - this should match the name used in the task mapping dictionary in task_util.py
-name: RWIP
+name: Broomy
 
 # physics engine - only physx is currently supported. This value does not need to be modified.
 physics_engine: ${..physics_engine}
@@ -7,7 +7,7 @@ physics_engine: ${..physics_engine}
 # task-related parameters
 env:
   # number of environments to create
-  numEnvs: ${resolve_default:128,${...num_envs}}
+  numEnvs: ${resolve_default:512,${...num_envs}}
   # spacing between each environment (in meters)
   envSpacing: 3.0
   # effort scaling
@@ -29,7 +29,7 @@ sim:
   gravity: [0.0, 0.0, -9.81]
 
   # whether to add a ground plane to the world
-  add_ground_plane: False
+  add_ground_plane: True
   # whether to add lighting to the world
   add_distant_light: True
 
