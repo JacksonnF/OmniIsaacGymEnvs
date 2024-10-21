@@ -48,7 +48,7 @@ class BroomyTask(RLTask):
         self.update_config(sim_config)
         self._max_episode_length = 350
 
-        self._num_observations = 14
+        self._num_observations = 17
         self._num_actions = 2
         RLTask.__init__(self, name, env)
         if self.randomize:
@@ -79,7 +79,30 @@ class BroomyTask(RLTask):
         self._max_effort = self._task_cfg["env"]["maxEffort"]
         self._stall_torque = self._task_cfg["env"]["stallTorque"]
 
+        self.lin_vel_scale = self._task_cfg["env"]["learn"]["linearVelocityScale"]
+        self.ang_vel_scale = self._task_cfg["env"]["learn"]["angularVelocityScale"]
+
+        self.command_x_range = self._task_cfg["env"]["randomCommandVelocityRanges"][
+            "linear_x"
+        ]
+        self.command_y_range = self._task_cfg["env"]["randomCommandVelocityRanges"][
+            "linear_y"
+        ]
+        self.command_yaw_range = self._task_cfg["env"]["randomCommandVelocityRanges"][
+            "yaw"
+        ]
+        self.rew_scales = {}
+        self.rew_scales["lin_vel_xy"] = self._task_cfg["env"]["learn"][
+            "linearVelocityXYRewardScale"
+        ]
+        self.rew_scales["ang_vel_z"] = self._task_cfg["env"]["learn"][
+            "angularVelocityZRewardScale"
+        ]
+
         self.dt = self._task_cfg["sim"]["dt"]
+
+        for key in self.rew_scales.keys():
+            self.rew_scales[key] *= self.dt
 
         self.randomize = self._task_cfg["domain_randomization"]["randomize"]
         print("ADD RANDOMIZATION? ", self.randomize)
@@ -99,7 +122,7 @@ class BroomyTask(RLTask):
         return
 
     def get_broomy(self):
-        rwip = Broomy(
+        broomy = Broomy(
             prim_path=self.default_zero_env_path + "/Broomy",
             usd_path="/home/fizzer/Documents/unicycle_08/top_level_broomy_sim.usd",
             name="Broomy",
@@ -115,7 +138,17 @@ class BroomyTask(RLTask):
     def get_observations(self) -> dict:
         self.root_pos, self.root_quats = self._broomys.get_world_poses(clone=False)
         dof_vel = self._broomys.get_joint_velocities(clone=False)
-        root_velocities = self._broomys.get_velocities(clone=False)
+        self.root_vel = self._broomys.get_velocities(clone=False)
+
+        self.base_lin_vel = quat_rotate_inverse(self.root_quats, self.root_vel[:, 0:3])
+        self.base_ang_vel = quat_rotate_inverse(self.root_quats, self.root_vel[:, 3:6])
+
+        forward = quat_apply(self.base_quat, self.forward_vec)
+        heading = torch.atan2(forward[:, 1], forward[:, 0])
+
+        self.commands[:, 2] = torch.clip(
+            0.5 * wrap_to_pi(self.commands[:, 3] - heading), -1.0, 1.0
+        )
 
         roll_vel = dof_vel[:, self._roll_dof_index]
         pitch_vel = dof_vel[:, self._pitch_dof_index]
@@ -125,7 +158,8 @@ class BroomyTask(RLTask):
         self.obs_buf[:, 1] = pitch_vel
         self.obs_buf[..., 2:5] = posns_from_start
         self.obs_buf[..., 5:9] = self.root_quats
-        self.obs_buf[..., 9:15] = root_velocities
+        self.obs_buf[..., 9:15] = self.root_vel
+        self.obs_buf[..., 15:18] = self.commands[:, :3] * self.commands_scale
 
         if self.randomize:
             _observations_uncorrelated_noise = torch.normal(
@@ -203,7 +237,29 @@ class BroomyTask(RLTask):
             indices=env_ids,
         )
         self._broomys.set_velocities(root_velocities[env_ids], indices=env_ids)
-
+        self.commands[env_ids, 0] = torch_rand_float(
+            self.command_x_range[0],
+            self.command_x_range[1],
+            (len(env_ids), 1),
+            device=self.device,
+        ).squeeze()
+        self.commands[env_ids, 1] = torch_rand_float(
+            self.command_y_range[0],
+            self.command_y_range[1],
+            (len(env_ids), 1),
+            device=self.device,
+        ).squeeze()
+        self.commands[env_ids, 3] = torch_rand_float(
+            self.command_yaw_range[0],
+            self.command_yaw_range[1],
+            (len(env_ids), 1),
+            device=self.device,
+        ).squeeze()
+        self.commands[env_ids] *= (
+            torch.norm(self.commands[env_ids, :2], dim=1) > 0.25
+        ).unsqueeze(
+            1
+        )  # set small commands to zero
         # bookkeeping
         self.reset_buf[env_ids] = 0
         self.progress_buf[env_ids] = 0
@@ -220,6 +276,18 @@ class BroomyTask(RLTask):
             root_rot.clone(),
         )
 
+        self.commands = torch.zeros(
+            self.num_envs, 4, dtype=torch.float, device=self.device, requires_grad=False
+        )  # x vel, y vel, yaw vel, heading
+        self.commands_scale = torch.tensor(
+            [self.lin_vel_scale, self.lin_vel_scale, self.ang_vel_scale],
+            device=self.device,
+            requires_grad=False,
+        )
+        self.forward_vec = torch.tensor(
+            [1.0, 0.0, 0.0], dtype=torch.float, device=self.device
+        ).repeat((self.num_envs, 1))
+
         # randomize all envs
         indices = torch.arange(
             self._broomys.count, dtype=torch.int64, device=self._device
@@ -233,12 +301,29 @@ class BroomyTask(RLTask):
         self.orient_z = ups[..., 2]
         up_reward = torch.clamp(ups[..., 2], min=0.0, max=1.0)
 
+        # effort penalty
         effort = torch.square(self.actions).sum(-1)
         effort_reward = 0.05 * torch.exp(-0.5 * effort)
 
-        self.rew_buf[:] = up_reward + effort_reward
+        lin_vel_error = torch.sum(
+            torch.square(self.commands[:, :2] - self.base_lin_vel[:, :2]), dim=1
+        )
+        ang_vel_error = torch.square(self.commands[:, 2] - self.base_ang_vel[:, 2])
+        rew_lin_vel_xy = (
+            torch.exp(-lin_vel_error / 0.25) * self.rew_scales["lin_vel_xy"]
+        )
+        rew_ang_vel_z = torch.exp(-ang_vel_error / 0.25) * self.rew_scales["ang_vel_z"]
+
+        self.rew_buf[:] = up_reward + effort_reward + rew_lin_vel_xy + rew_ang_vel_z
 
     def is_done(self) -> None:
         resets = torch.where(self.orient_z < 0.0, 1, 0)
         resets = torch.where(self.progress_buf >= self._max_episode_length, 1, resets)
         self.reset_buf[:] = resets
+
+
+@torch.jit.script
+def wrap_to_pi(angles):
+    angles %= 2 * np.pi
+    angles -= 2 * np.pi * (angles > np.pi)
+    return angles

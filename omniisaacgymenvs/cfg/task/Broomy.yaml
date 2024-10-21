@@ -14,10 +14,21 @@ env:
   maxEffort: 0.8
   # perform 2 simulation steps for every action (applies actions every 2 simulation steps)
   controlFrequencyInv: 2 # 2
-
   stallTorque: 2.0 
-
   enablePlotting: False
+  randomCommandVelocityRanges:
+    # train
+    linear_x: [-1., 1.] # min max [m/s]
+    linear_y: [-1., 1.]   # min max [m/s]
+    yaw: [-3.14, 3.14]    # min max [rad/s]
+  learn:
+    # normalization
+    linearVelocityScale: 2.0
+    angularVelocityScale: 0.25
+    linearVelocityXYRewardScale: 1.0
+    angularVelocityZRewardScale: 0.5
+
+
 
 # simulation related parameters
 sim:
@@ -82,7 +93,7 @@ sim:
   # each asset in the task can override physics parameters defined in the scene
   # the name of the asset must match the name of the ArticulationView for the asset in the task
   # additional Articulation and rigid body documentation can be found at https://docs.omniverse.nvidia.com/kit/docs/omni_usd_schema_physics/104.2/class_physx_schema_physx_articulation_a_p_i.html and https://docs.omniverse.nvidia.com/kit/docs/omni_usd_schema_physics/104.2/class_physx_schema_physx_rigid_body_a_p_i.html
-  RWIP:
+  Broomy:
     # a value of -1 means to use the same values defined in the physics scene
     override_usd_defaults: False
     enable_self_collisions: False
