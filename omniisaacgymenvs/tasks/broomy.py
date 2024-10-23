@@ -301,25 +301,22 @@ class BroomyTask(RLTask):
         root_quats = self.root_quats
         ups = quat_axis(root_quats, 2)
         self.orient_z = ups[..., 2]
-        up_reward = torch.clamp(ups[..., 2], min=0.0, max=1.0)
+        # up_reward = torch.clamp(ups[..., 2], min=0.0, max=1.0)
+        up_reward = torch.where(ups[..., 2] <= 0.25, -1, 0)
 
         # effort penalty
-        effort = torch.square(self.actions).sum(-1)
-        effort_reward = 0.05 * torch.exp(-0.5 * effort)
+        # effort = torch.square(self.actions).sum(-1)
+        # effort_reward = 0.05 * torch.exp(-0.5 * effort)
 
         lin_vel_error = torch.sum(
-            torch.square(self.commands[:, :2] - self.base_lin_vel[:, :2]), dim=1
+            torch.square(self.commands[:, 0] - self.base_lin_vel[:, 0]), dim=1
         )
-        ang_vel_error = torch.square(self.commands[:, 2] - self.base_ang_vel[:, 2])
-        rew_lin_vel_xy = (
-            torch.exp(-lin_vel_error / 0.25) * self.rew_scales["lin_vel_xy"]
-        )
-        rew_ang_vel_z = torch.exp(-ang_vel_error / 0.25) * self.rew_scales["ang_vel_z"]
+        rew_lin_vel_x = torch.exp(-lin_vel_error / 0.25) * self.rew_scales["lin_vel_xy"]
 
-        self.rew_buf[:] = up_reward + effort_reward + rew_lin_vel_xy + rew_ang_vel_z
+        self.rew_buf[:] = up_reward + rew_lin_vel_x
 
     def is_done(self) -> None:
-        resets = torch.where(self.orient_z < 0.0, 1, 0)
+        resets = torch.where(self.orient_z < 0.1, 1, 0)
         resets = torch.where(self.progress_buf >= self._max_episode_length, 1, resets)
         self.reset_buf[:] = resets
 
