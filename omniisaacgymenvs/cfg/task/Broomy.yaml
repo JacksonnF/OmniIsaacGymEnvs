@@ -11,14 +11,14 @@ env:
   # spacing between each environment (in meters)
   envSpacing: 3.0
   # effort scaling
-  maxEffort: 0.8
+  maxEffort: 2.0
   # perform 2 simulation steps for every action (applies actions every 2 simulation steps)
   controlFrequencyInv: 2 # 2
   stallTorque: 2.0 
   enablePlotting: False
   randomCommandVelocityRanges:
     # train
-    linear_x: [-5., 5.] # min max [m/s]
+    linear_x: [1., 3.] # min max [m/s]
     linear_y: [0., 0]   # min max [m/s]
     yaw: [-3.14, 3.14]    # min max [rad/s]
   learn:

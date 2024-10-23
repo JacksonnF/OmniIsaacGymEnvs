@@ -22,13 +22,21 @@ params:
           val: 0
         fixed_sigma: True
     mlp:
-      units: [64, 32]
+      units: [32, 32]
       activation: elu
 
       initializer:
         name: default
       regularizer:
         name: None
+
+    rnn:
+      name: lstm
+      units: 64
+      layers: 1
+      before_mlp: True
+      layer_norm: True
+
 
   load_checkpoint: ${if:${...checkpoint},True,False} # flag which sets whether to load the checkpoint
   load_path: ${...checkpoint} # path to the checkpoint to load
@@ -54,7 +62,7 @@ params:
     lr_schedule: adaptive
     kl_threshold: 0.008
     score_to_win: 20000
-    max_epochs: ${resolve_default:500,${....max_iterations}}
+    max_epochs: ${resolve_default:2000,${....max_iterations}}
     save_best_after: 100
     save_frequency: 25
     grad_norm: 1.0
