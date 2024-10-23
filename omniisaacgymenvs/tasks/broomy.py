@@ -49,7 +49,7 @@ class BroomyTask(RLTask):
         self.update_config(sim_config)
         self._max_episode_length = 350
 
-        self._num_observations = 17
+        self._num_observations = 15
         self._num_actions = 2
         RLTask.__init__(self, name, env)
         if self.randomize:
@@ -144,7 +144,7 @@ class BroomyTask(RLTask):
         self.base_lin_vel = quat_rotate_inverse(self.root_quats, self.root_vel[:, 0:3])
         self.base_ang_vel = quat_rotate_inverse(self.root_quats, self.root_vel[:, 3:6])
 
-        forward = quat_apply(self.base_quat, self.forward_vec)
+        forward = quat_apply(self.root_quats, self.forward_vec)
         heading = torch.atan2(forward[:, 1], forward[:, 0])
 
         self.commands[:, 2] = torch.clip(
@@ -157,10 +157,9 @@ class BroomyTask(RLTask):
 
         self.obs_buf[:, 0] = roll_vel
         self.obs_buf[:, 1] = pitch_vel
-        self.obs_buf[..., 2:5] = posns_from_start
+        self.obs_buf[..., 2:5] = self.commands[:, :3] * self.commands_scale
         self.obs_buf[..., 5:9] = self.root_quats
-        self.obs_buf[..., 9:15] = self.root_vel
-        self.obs_buf[..., 15:18] = self.commands[:, :3] * self.commands_scale
+        self.obs_buf[..., 9:16] = self.root_vel
 
         if self.randomize:
             _observations_uncorrelated_noise = torch.normal(
@@ -310,13 +309,13 @@ class BroomyTask(RLTask):
         lin_vel_error = torch.sum(
             torch.square(self.commands[:, :2] - self.base_lin_vel[:, :2]), dim=1
         )
-        ang_vel_error = torch.square(self.commands[:, 2] - self.base_ang_vel[:, 2])
+        # ang_vel_error = torch.square(self.commands[:, 2] - self.base_ang_vel[:, 2])
         rew_lin_vel_xy = (
             torch.exp(-lin_vel_error / 0.25) * self.rew_scales["lin_vel_xy"]
         )
-        rew_ang_vel_z = torch.exp(-ang_vel_error / 0.25) * self.rew_scales["ang_vel_z"]
+        # rew_ang_vel_z = torch.exp(-ang_vel_error / 0.25) * self.rew_scales["ang_vel_z"]
 
-        self.rew_buf[:] = up_reward + effort_reward + rew_lin_vel_xy + rew_ang_vel_z
+        self.rew_buf[:] = up_reward + effort_reward + rew_lin_vel_xy 
 
     def is_done(self) -> None:
         resets = torch.where(self.orient_z < 0.0, 1, 0)
