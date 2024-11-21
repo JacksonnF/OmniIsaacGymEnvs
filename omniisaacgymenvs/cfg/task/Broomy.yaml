@@ -7,11 +7,11 @@ physics_engine: ${..physics_engine}
 # task-related parameters
 env:
   # number of environments to create
-  numEnvs: ${resolve_default:512,${...num_envs}}
+  numEnvs: ${resolve_default:256,${...num_envs}}
   # spacing between each environment (in meters)
   envSpacing: 3.0
   # effort scaling
-  maxEffort: 2.0
+  maxEffort: 1.0
   # perform 2 simulation steps for every action (applies actions every 2 simulation steps)
   controlFrequencyInv: 2 # 2
   stallTorque: 2.0 

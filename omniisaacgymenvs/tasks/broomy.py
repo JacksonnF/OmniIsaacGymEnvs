@@ -49,7 +49,7 @@ class BroomyTask(RLTask):
         self.update_config(sim_config)
         self._max_episode_length = 350
 
-        self._num_observations = 11
+        self._num_observations = 12
         self._num_actions = 3
         RLTask.__init__(self, name, env)
         if self.randomize:
@@ -85,9 +85,6 @@ class BroomyTask(RLTask):
 
         self.dt = self._task_cfg["sim"]["dt"]
 
-        for key in self.rew_scales.keys():
-            self.rew_scales[key] *= self.dt
-
         self.randomize = self._task_cfg["domain_randomization"]["randomize"]
         print("ADD RANDOMIZATION? ", self.randomize)
 
@@ -97,7 +94,7 @@ class BroomyTask(RLTask):
         self.get_broomy()
         super().set_up_scene(scene)
         self._broomys = ArticulationView(
-            prim_paths_expr="/World/envs/.*/Broomy/top_level_broomy_sim",
+            prim_paths_expr="/World/envs/.*/Broomy/full_robot",
             name="broomy_view",
             reset_xform_properties=False,
         )
@@ -108,13 +105,13 @@ class BroomyTask(RLTask):
     def get_broomy(self):
         broomy = Broomy(
             prim_path=self.default_zero_env_path + "/Broomy",
-            usd_path="/home/fizzer/Documents/unicycle_29/top_level_broomy_sim.usd",
+            usd_path="/home/fizzer/Documents/unicycle_29/full_robot_inable.usd",
             name="Broomy",
         )
         self._sim_config.apply_articulation_settings(
             "Broomy",
             get_prim_at_path(
-                self.default_zero_env_path + "/Broomy" + "/top_level_broomy_sim"
+                self.default_zero_env_path + "/Broomy" + "/full_robot"
             ),
             self._sim_config.parse_actor_config("Broomy"),
         )
@@ -224,8 +221,8 @@ class BroomyTask(RLTask):
 
     def post_reset(self) -> None:
         print("DOF Names: ", self._broomys.dof_names)
-        self._roll_dof_index = self._broomys.get_dof_index("Revolute_1")
-        self._pitch_dof_index = self._broomys.get_dof_index("Revolute_1_01")
+        self._roll_dof_index = self._broomys.get_dof_index("roll")
+        self._pitch_dof_index = self._broomys.get_dof_index("pitch")
         self._yaw_dof_index = self._broomys.get_dof_index("yaw")
 
         # Save for comoputing reset posn later
@@ -251,7 +248,7 @@ class BroomyTask(RLTask):
         up_reward = torch.where(ups[..., 2] >= 0.7, 0.25, 0)
         fallen_pen = torch.where(ups[..., 2] <= 0.25, -1, 0)
 
-        self.rew_buf[:] = rew_lin_vel_x + fallen_pen
+        self.rew_buf[:] = up_reward + fallen_pen
 
     def is_done(self) -> None:
         resets = torch.where(self.orient_z < 0.1, 1, 0)
