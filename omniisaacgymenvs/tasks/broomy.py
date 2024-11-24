@@ -49,7 +49,7 @@ class BroomyTask(RLTask):
         self.update_config(sim_config)
         self._max_episode_length = 350
 
-        self._num_observations = 12
+        self._num_observations = 9
         self._num_actions = 3
         RLTask.__init__(self, name, env)
         if self.randomize:
@@ -78,6 +78,7 @@ class BroomyTask(RLTask):
         self._cartpole_positions = torch.tensor([0.0, 0.0, 1.0])
 
         self._max_effort = self._task_cfg["env"]["maxEffort"]
+        self._max_effort_yaw = self._task_cfg["env"]["maxEffortYaw"]
         self._stall_torque = self._task_cfg["env"]["stallTorque"]
 
         self.lin_vel_scale = self._task_cfg["env"]["learn"]["linearVelocityScale"]
@@ -105,7 +106,7 @@ class BroomyTask(RLTask):
     def get_broomy(self):
         broomy = Broomy(
             prim_path=self.default_zero_env_path + "/Broomy",
-            usd_path="/home/fizzer/Documents/unicycle_29/full_robot_inable.usd",
+            usd_path="/home/fizzer/Documents/unicycle_29/no_banana_broomy.usd",
             name="Broomy",
         )
         self._sim_config.apply_articulation_settings(
@@ -120,8 +121,12 @@ class BroomyTask(RLTask):
         self.root_pos, self.root_quats = self._broomys.get_world_poses(clone=False)
         dof_vel = self._broomys.get_joint_velocities(clone=False)
         self.root_vel = self._broomys.get_velocities(clone=False)
-        root_lin_vel = self.root_vel[:, 0:3]
-        root_ang_vel = self.root_vel[:, 3:6]
+
+        angular_velocities = self.root_vel[:, 3:]
+        euler_angles = get_euler_xyz(self.root_quats)
+        euler_rates = quats_to_euler_rates(euler_angles, angular_velocities)
+
+        eulerx, eulery, eulerz = euler_angles
 
         roll_vel = dof_vel[:, self._roll_dof_index]
         pitch_vel = dof_vel[:, self._pitch_dof_index]
@@ -130,9 +135,11 @@ class BroomyTask(RLTask):
         self.obs_buf[:, 0] = roll_vel
         self.obs_buf[:, 1] = pitch_vel
         self.obs_buf[:, 2] = yaw_vel
-        self.obs_buf[..., 2:6] = self.root_quats
-        self.obs_buf[..., 6:9] = root_lin_vel
-        self.obs_buf[..., 9:12] = root_ang_vel
+        self.obs_buf[..., 3] = eulerx
+        self.obs_buf[..., 4] = eulery
+        self.obs_buf[..., 5] = eulerz
+        self.obs_buf[:, 6:9] = euler_rates
+
 
         if self.randomize:
             _observations_uncorrelated_noise = torch.normal(
@@ -181,7 +188,7 @@ class BroomyTask(RLTask):
             self._max_effort * actions[:, 1], -self._max_effort, self._max_effort
         )
         forces[:, self._yaw_dof_index] = torch.clamp(
-            self._max_effort * actions[:, 2], -self._max_effort, self._max_effort
+            self._max_effort_yaw * actions[:, 2], -self._max_effort_yaw, self._max_effort_yaw
         )
 
         if self.randomize:
@@ -261,3 +268,33 @@ def wrap_to_pi(angles):
     angles %= 2 * np.pi
     angles -= 2 * np.pi * (angles > np.pi)
     return angles
+
+def quats_to_euler_rates(euler_angles, angular_velocities):
+    # x, y, z = euler_angles[:, 0], euler_angles[:, 1], euler_angles[:, 2]
+    x,y,z = euler_angles
+    cos_x = torch.cos(x)
+    cos_y = torch.cos(y)
+    sin_x = torch.sin(x)
+    tan_y = torch.tan(y)
+
+    t11 = torch.ones_like(x)
+    t12 = sin_x * tan_y
+    t13 = cos_x * tan_y
+    t21 = torch.zeros_like(x)
+    t22 = cos_x
+    t23 = -sin_x
+    t31 = torch.zeros_like(x)
+    t32 = sin_x / cos_y
+    t33 = cos_x / cos_y
+
+    T = torch.stack([
+        torch.stack([t11, t12, t13], dim=-1),
+        torch.stack([t21, t22, t23], dim=-1),
+        torch.stack([t31, t32, t33], dim=-1)
+    ], dim=-2)
+
+    angular_velocities = angular_velocities.unsqueeze(-1)
+
+    euler_rates = torch.matmul(T, angular_velocities).squeeze(-1)
+
+    return euler_rates
