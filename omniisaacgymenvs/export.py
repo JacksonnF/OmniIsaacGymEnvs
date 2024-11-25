@@ -116,6 +116,10 @@ class RLGTrainer:
             'obs': torch.zeros((1,) + agent.obs_shape).to(agent.device),
             'rnn_states': agent.states,
         }
+
+        print(agent.states)
+        print(agent.states[0].shape)
+        print(agent.states[1].shape)
         # dumbinput = torch.zeros((1,) + agent.obs_shape).to(agent.device)
         # mod_simp = ActorModel(agent.model.a2c_network)
 
@@ -141,7 +145,7 @@ class RLGTrainer:
             print(flattened_outputs)
 
         torch.onnx.export(
-            traced, adapter.flattened_inputs, "broomy-balance-export.onnx", 
+            traced, adapter.flattened_inputs, "broomy-balance-export_statecheck.onnx", 
             verbose=True, input_names=['obs', 'out_state', 'hidden_state'], 
             output_names=['mu', 'log_std', 'value', 'out_state', 'hidden_state'],
         )
