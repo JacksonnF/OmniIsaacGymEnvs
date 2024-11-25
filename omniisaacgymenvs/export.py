@@ -104,7 +104,7 @@ class RLGTrainer:
         agent = runner.create_player()
         #TODO: Specify correct path (does runner.load_path work)
         agent.restore('./runs/Broomy/nn/Broomy.pth')
-        agent.init_rnn()
+        # agent.init_rnn()
 
         #TODO: Could add testing like is done by twip
         # where they have pytorch model(agent.model) and they
@@ -114,12 +114,12 @@ class RLGTrainer:
         # Create dummy inputs for model tracing
         inputs = {
             'obs': torch.zeros((1,) + agent.obs_shape).to(agent.device),
-            'rnn_states': agent.states,
+            # 'rnn_states': agent.states,
         }
 
-        print(agent.states)
-        print(agent.states[0].shape)
-        print(agent.states[1].shape)
+        # print(agent.states)
+        # print(agent.states[0].shape)
+        # print(agent.states[1].shape)
         # dumbinput = torch.zeros((1,) + agent.obs_shape).to(agent.device)
         # mod_simp = ActorModel(agent.model.a2c_network)
 
@@ -145,16 +145,16 @@ class RLGTrainer:
             print(flattened_outputs)
 
         torch.onnx.export(
-            traced, adapter.flattened_inputs, "broomy-balance-export_statecheck.onnx", 
-            verbose=True, input_names=['obs', 'out_state', 'hidden_state'], 
-            output_names=['mu', 'log_std', 'value', 'out_state', 'hidden_state'],
+            traced, adapter.flattened_inputs, "broomy-balance-export-nornn.onnx", 
+            verbose=True, input_names=['obs'], 
+            output_names=['mu', 'log_std', 'value'],
         )
         print("Model Exported.... Checking correctness")
         print("ONNX Outputs: ", {flattened_outputs})
         print("Model Outputs: ", {m.forward(inputs)})
 
         print("Observation Shape: ", agent.obs_shape, "Action Shape: ", agent.actions_num)
-        torch.onnx.checker.check_model(torch.onnx.load('broomy-balance-export.onnx'))
+        # torch.onnx.checker.check_model(torch.onnx.load('broomy-balance-export.onnx'))
         #----------------------------------------#
 
 @hydra.main(version_base=None, config_name="config", config_path="./cfg")

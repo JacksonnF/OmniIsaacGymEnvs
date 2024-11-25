@@ -135,9 +135,9 @@ class BroomyTask(RLTask):
         self.obs_buf[:, 0] = roll_vel
         self.obs_buf[:, 1] = pitch_vel
         self.obs_buf[:, 2] = yaw_vel
-        self.obs_buf[..., 3] = eulerx
-        self.obs_buf[..., 4] = eulery
-        self.obs_buf[..., 5] = eulerz
+        self.obs_buf[:, 3] = eulerx
+        self.obs_buf[:, 4] = eulery
+        self.obs_buf[:, 5] = eulerz
         self.obs_buf[:, 6:9] = euler_rates
 
 
