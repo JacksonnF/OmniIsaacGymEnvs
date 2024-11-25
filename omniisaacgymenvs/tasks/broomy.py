@@ -111,9 +111,7 @@ class BroomyTask(RLTask):
         )
         self._sim_config.apply_articulation_settings(
             "Broomy",
-            get_prim_at_path(
-                self.default_zero_env_path + "/Broomy" + "/full_robot"
-            ),
+            get_prim_at_path(self.default_zero_env_path + "/Broomy" + "/full_robot"),
             self._sim_config.parse_actor_config("Broomy"),
         )
 
@@ -139,7 +137,6 @@ class BroomyTask(RLTask):
         self.obs_buf[:, 4] = eulery
         self.obs_buf[:, 5] = eulerz
         self.obs_buf[:, 6:9] = euler_rates
-
 
         if self.randomize:
             _observations_uncorrelated_noise = torch.normal(
@@ -188,7 +185,9 @@ class BroomyTask(RLTask):
             self._max_effort * actions[:, 1], -self._max_effort, self._max_effort
         )
         forces[:, self._yaw_dof_index] = torch.clamp(
-            self._max_effort_yaw * actions[:, 2], -self._max_effort_yaw, self._max_effort_yaw
+            self._max_effort_yaw * actions[:, 2],
+            -self._max_effort_yaw,
+            self._max_effort_yaw,
         )
 
         if self.randomize:
@@ -252,10 +251,19 @@ class BroomyTask(RLTask):
 
         ups = quat_axis(root_quats, 2)
         self.orient_z = ups[..., 2]
-        up_reward = torch.where(ups[..., 2] >= 0.7, 0.25, 0)
-        fallen_pen = torch.where(ups[..., 2] <= 0.25, -1, 0)
+        up_reward = torch.where(self.orient_z >= 0.7, 1.0, 0)
+        angle_reward = ups
+        fallen_pen = torch.where(self.orient_z <= 0.25, -1, 0)
+        effort = torch.square(self.actions).sum(-1)
+        effort_reward = 0.05 * torch.exp(-0.5 * effort)
+        dist_from_spawn = torch.sqrt(
+            torch.square(self.initial_root_pos.clone() - self.root_pos).sum(-1)
+        )
+        pos_reward = 1.0 / (1.0 + 3 * dist_from_spawn * dist_from_spawn)
 
-        self.rew_buf[:] = up_reward + fallen_pen
+        self.rew_buf[:] = (
+            up_reward + fallen_pen + angle_reward + effort_reward + pos_reward
+        )
 
     def is_done(self) -> None:
         resets = torch.where(self.orient_z < 0.1, 1, 0)
@@ -269,9 +277,10 @@ def wrap_to_pi(angles):
     angles -= 2 * np.pi * (angles > np.pi)
     return angles
 
+
 def quats_to_euler_rates(euler_angles, angular_velocities):
     # x, y, z = euler_angles[:, 0], euler_angles[:, 1], euler_angles[:, 2]
-    x,y,z = euler_angles
+    x, y, z = euler_angles
     cos_x = torch.cos(x)
     cos_y = torch.cos(y)
     sin_x = torch.sin(x)
@@ -287,11 +296,14 @@ def quats_to_euler_rates(euler_angles, angular_velocities):
     t32 = sin_x / cos_y
     t33 = cos_x / cos_y
 
-    T = torch.stack([
-        torch.stack([t11, t12, t13], dim=-1),
-        torch.stack([t21, t22, t23], dim=-1),
-        torch.stack([t31, t32, t33], dim=-1)
-    ], dim=-2)
+    T = torch.stack(
+        [
+            torch.stack([t11, t12, t13], dim=-1),
+            torch.stack([t21, t22, t23], dim=-1),
+            torch.stack([t31, t32, t33], dim=-1),
+        ],
+        dim=-2,
+    )
 
     angular_velocities = angular_velocities.unsqueeze(-1)
 
