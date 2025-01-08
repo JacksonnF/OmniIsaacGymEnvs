@@ -102,19 +102,29 @@ class BroomyTask(RLTask):
             reset_xform_properties=False,
         )
         scene.add(self._broomys)
-        IMUSensor(
-            prim_path="/World/envs/.*/Broomy/full_robot/Imu",
-            name="imu",
-            # frequency=60,
-            dt=0.005,  # same as config (can set to that var)
-            translation=np.array([0, 0, 0]),
-            orientation=np.array([1, 0, 0, 0]),
-            linear_acceleration_filter_size=10,
-            angular_velocity_filter_size=10,
-            orientation_filter_size=10,
-        )
+        self.imus = self.create_sensors()
         self.torque_buffer = torch.zeros(10, self._num_envs, 1, device=self._device)
         return
+
+    def create_sensors(self) -> list:
+        sensor_paths = [
+            f"/World/envs/env_{i}/Broomy/full_robot/Imu" for i in range(self._num_envs)
+        ]
+        sensors = []
+        for path in sensor_paths:
+            imu = IMUSensor(
+                prim_path=path,
+                name="imu",
+                # frequency=60,
+                dt=0.005,  # same as config (can set to that var)
+                translation=np.array([0, 0, 0]),
+                orientation=np.array([1, 0, 0, 0]),
+                linear_acceleration_filter_size=10,
+                angular_velocity_filter_size=10,
+                orientation_filter_size=10,
+            )
+            sensors.append(imu)
+        return sensors
 
     def get_broomy(self):
         broomy = Broomy(
@@ -289,36 +299,3 @@ def wrap_to_pi(angles):
     angles %= 2 * np.pi
     angles -= 2 * np.pi * (angles > np.pi)
     return angles
-
-
-def quats_to_euler_rates(euler_angles, angular_velocities):
-    x, y, z = euler_angles
-    cos_x = torch.cos(x)
-    cos_y = torch.cos(y)
-    sin_x = torch.sin(x)
-    tan_y = torch.tan(y)
-
-    t11 = torch.ones_like(x)
-    t12 = sin_x * tan_y
-    t13 = cos_x * tan_y
-    t21 = torch.zeros_like(x)
-    t22 = cos_x
-    t23 = -sin_x
-    t31 = torch.zeros_like(x)
-    t32 = sin_x / cos_y
-    t33 = cos_x / cos_y
-
-    T = torch.stack(
-        [
-            torch.stack([t11, t12, t13], dim=-1),
-            torch.stack([t21, t22, t23], dim=-1),
-            torch.stack([t31, t32, t33], dim=-1),
-        ],
-        dim=-2,
-    )
-
-    angular_velocities = angular_velocities.unsqueeze(-1)
-
-    euler_rates = torch.matmul(T, angular_velocities).squeeze(-1)
-
-    return euler_rates
