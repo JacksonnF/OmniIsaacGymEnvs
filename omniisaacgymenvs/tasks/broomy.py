@@ -12,6 +12,8 @@ from omni.isaac.core.utils.stage import add_reference_to_stage
 from omni.isaac.core.articulations import ArticulationView
 from omni.isaac.core.utils.prims import get_prim_at_path
 from omni.isaac.core.utils.torch.rotations import *
+from omni.isaac.sensor import _sensor, IMUSensor
+
 
 from omniisaacgymenvs.tasks.base.rl_task import RLTask
 from omniisaacgymenvs.utils.domain_randomization.randomize import Randomizer
@@ -100,6 +102,17 @@ class BroomyTask(RLTask):
             reset_xform_properties=False,
         )
         scene.add(self._broomys)
+        IMUSensor(
+            prim_path="/World/envs/.*/Broomy/full_robot/Imu",
+            name="imu",
+            # frequency=60,
+            dt=0.005,  # same as config (can set to that var)
+            translation=np.array([0, 0, 0]),
+            orientation=np.array([1, 0, 0, 0]),
+            linear_acceleration_filter_size=10,
+            angular_velocity_filter_size=10,
+            orientation_filter_size=10,
+        )
         self.torque_buffer = torch.zeros(10, self._num_envs, 1, device=self._device)
         return
 
@@ -116,7 +129,7 @@ class BroomyTask(RLTask):
         )
 
     def get_observations(self) -> dict:
-        self.root_pos, self.root_quats = self._broomys.get_world_poses(clone=False)
+        self.root_pos, self.root_quats = self._broomys.get_local_poses(clone=False)
         dof_vel = self._broomys.get_joint_velocities(clone=False)
         self.root_vel = self._broomys.get_velocities(clone=False)
 
@@ -279,7 +292,6 @@ def wrap_to_pi(angles):
 
 
 def quats_to_euler_rates(euler_angles, angular_velocities):
-    # x, y, z = euler_angles[:, 0], euler_angles[:, 1], euler_angles[:, 2]
     x, y, z = euler_angles
     cos_x = torch.cos(x)
     cos_y = torch.cos(y)
