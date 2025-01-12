@@ -12,6 +12,7 @@ from omni.isaac.core.utils.stage import add_reference_to_stage
 from omni.isaac.core.articulations import ArticulationView
 from omni.isaac.core.utils.prims import get_prim_at_path
 from omni.isaac.core.utils.torch.rotations import *
+from omni.isaac.sensor import IMUSensor
 
 from omniisaacgymenvs.tasks.base.rl_task import RLTask
 from omniisaacgymenvs.utils.domain_randomization.randomize import Randomizer
@@ -100,6 +101,17 @@ class BroomyTask(RLTask):
             reset_xform_properties=False,
         )
         scene.add(self._broomys)
+        IMUSensor(
+            prim_path="/World/envs/env_0/Broomy/full_robot/robot_body/Imu",
+            name="imu",
+            # frequency=60,
+            dt=0.005,  # same as config (can set to that var)
+            translation=np.array([0, 0, 0]),
+            orientation=np.array([1, 0, 0, 0]),
+            linear_acceleration_filter_size=10,
+            angular_velocity_filter_size=10,
+            orientation_filter_size=10,
+        )
         self.torque_buffer = torch.zeros(10, self._num_envs, 1, device=self._device)
         return
 
