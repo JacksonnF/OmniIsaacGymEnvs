@@ -5,6 +5,7 @@ from typing import Optional
 
 # import pandas as pd
 import matplotlib.pyplot as plt
+import threading
 
 import omni
 from omni.isaac.core.robots.robot import Robot
@@ -117,7 +118,7 @@ class BroomyTask(RLTask):
                 # frequency=60,
                 dt=0.005,  # same as config (can set to that var)
                 translation=np.array([0, 0, 0]),
-                orientation=np.array([1, 0, 0, 0]),
+                orientation=np.array([0, 0, 0, 1]),
                 linear_acceleration_filter_size=10,
                 angular_velocity_filter_size=10,
                 orientation_filter_size=10,
@@ -141,7 +142,6 @@ class BroomyTask(RLTask):
 
     def get_observations(self) -> dict:
         imu_reading = self.imus[0].get_current_frame()
-        print(imu_reading)
 
         self.root_pos, self.root_quats = self._broomys.get_world_poses(clone=False)
         dof_vel = self._broomys.get_joint_velocities(clone=False)
