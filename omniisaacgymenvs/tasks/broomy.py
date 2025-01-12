@@ -264,10 +264,19 @@ class BroomyTask(RLTask):
 
         ups = quat_axis(root_quats, 2)
         self.orient_z = ups[..., 2]
-        up_reward = torch.where(ups[..., 2] >= 0.7, 0.25, 0)
-        fallen_pen = torch.where(ups[..., 2] <= 0.25, -1, 0)
+        up_reward = torch.where(self.orient_z >= 0.7, 1.0, 0)
+        angle_reward = ups
+        fallen_pen = torch.where(self.orient_z <= 0.25, -1, 0)
+        effort = torch.square(self.actions).sum(-1)
+        effort_reward = 0.05 * torch.exp(-0.5 * effort)
+        dist_from_spawn = torch.sqrt(
+            torch.square(self.initial_root_pos.clone() - self.root_pos).sum(-1)
+        )
+        pos_reward = 1.0 / (1.0 + 3 * dist_from_spawn * dist_from_spawn)
 
-        self.rew_buf[:] = up_reward + fallen_pen
+        self.rew_buf[:] = (
+            up_reward + fallen_pen + angle_reward + effort_reward + pos_reward
+        )
 
     def is_done(self) -> None:
         resets = torch.where(self.orient_z < 0.1, 1, 0)
