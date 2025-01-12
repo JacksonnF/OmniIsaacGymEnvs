@@ -101,19 +101,29 @@ class BroomyTask(RLTask):
             reset_xform_properties=False,
         )
         scene.add(self._broomys)
-        IMUSensor(
-            prim_path="/World/envs/env_0/Broomy/full_robot/robot_body/Imu",
-            name="imu",
-            # frequency=60,
-            dt=0.005,  # same as config (can set to that var)
-            translation=np.array([0, 0, 0]),
-            orientation=np.array([1, 0, 0, 0]),
-            linear_acceleration_filter_size=10,
-            angular_velocity_filter_size=10,
-            orientation_filter_size=10,
-        )
+        self.imus = self.create_sensors()
         self.torque_buffer = torch.zeros(10, self._num_envs, 1, device=self._device)
         return
+    
+    def create_sensors(self) -> list:
+        sensor_paths = [
+            f"/World/envs/env_{i}/Broomy/full_robot/robot_body/Imu{i}" for i in range(self._num_envs)
+        ]
+        sensors = []
+        for path in sensor_paths:
+            imu = IMUSensor(
+                prim_path=path,
+                name="imu",
+                # frequency=60,
+                dt=0.005,  # same as config (can set to that var)
+                translation=np.array([0, 0, 0]),
+                orientation=np.array([1, 0, 0, 0]),
+                linear_acceleration_filter_size=10,
+                angular_velocity_filter_size=10,
+                orientation_filter_size=10,
+            )
+            sensors.append(imu)
+        return sensors
 
     def get_broomy(self):
         broomy = Broomy(
@@ -130,6 +140,9 @@ class BroomyTask(RLTask):
         )
 
     def get_observations(self) -> dict:
+        imu_reading = self.imus[0].get_current_frame()
+        print(imu_reading)
+
         self.root_pos, self.root_quats = self._broomys.get_world_poses(clone=False)
         dof_vel = self._broomys.get_joint_velocities(clone=False)
         self.root_vel = self._broomys.get_velocities(clone=False)
@@ -265,7 +278,7 @@ class BroomyTask(RLTask):
         ups = quat_axis(root_quats, 2)
         self.orient_z = ups[..., 2]
         up_reward = torch.where(self.orient_z >= 0.7, 1.0, 0)
-        angle_reward = ups
+        angle_reward = ups[..., 2]
         fallen_pen = torch.where(self.orient_z <= 0.25, -1, 0)
         effort = torch.square(self.actions).sum(-1)
         effort_reward = 0.05 * torch.exp(-0.5 * effort)
