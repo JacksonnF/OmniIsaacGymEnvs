@@ -102,7 +102,7 @@ class BroomyTask(RLTask):
             reset_xform_properties=False,
         )
         scene.add(self._broomys)
-        self.imus = self.create_sensors()
+        # self.imus = self.create_sensors()
         self.torque_buffer = torch.zeros(10, self._num_envs, 1, device=self._device)
         return
 
@@ -112,6 +112,7 @@ class BroomyTask(RLTask):
         ]
         sensors = []
         for path in sensor_paths:
+            print(path)
             imu = IMUSensor(
                 prim_path=path,
                 name="imu",
@@ -139,9 +140,12 @@ class BroomyTask(RLTask):
         )
 
     def get_observations(self) -> dict:
-        self.root_pos, self.root_quats = self._broomys.get_local_poses(clone=False)
-        dof_vel = self._broomys.get_joint_velocities(clone=False)
-        self.root_vel = self._broomys.get_velocities(clone=False)
+        # imu_meas = [self.imus[i].get_current_frame() for i in range(len(self.imus))]
+        # print(imu_meas)
+
+        self.root_pos, self.root_quats = self._broomys.get_local_poses()
+        dof_vel = self._broomys.get_joint_velocities()
+        self.root_vel = self._broomys.get_velocities()
 
         angular_velocities = self.root_vel[:, 3:]
         euler_angles = get_euler_xyz(self.root_quats)
