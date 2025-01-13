@@ -6,6 +6,8 @@ from typing import Optional
 # import pandas as pd
 import matplotlib.pyplot as plt
 import threading
+from transforms3d import euler, quaternions
+import imufusion
 
 import omni
 from omni.isaac.core.robots.robot import Robot
@@ -17,6 +19,7 @@ from omni.isaac.sensor import IMUSensor
 
 from omniisaacgymenvs.tasks.base.rl_task import RLTask
 from omniisaacgymenvs.utils.domain_randomization.randomize import Randomizer
+from omniisaacgymenvs.tasks.utils.AHRSfusion import AHRSfusion
 
 
 EPS = 1e-6
@@ -67,7 +70,9 @@ class BroomyTask(RLTask):
                 size=(self._num_envs, self._num_actions),
                 device=self._cfg["rl_device"],
             )
-            print("INITIAL CORRELATED NOISE: ", self._observations_correlated_noise)
+        self.ahrs_insts = [
+            AHRSfusion(int(1 / 0.01)) for i in range(self._num_envs)
+        ]  # TODO: Config this
         return
 
     def update_config(self, sim_config):
@@ -105,10 +110,11 @@ class BroomyTask(RLTask):
         self.imus = self.create_sensors()
         self.torque_buffer = torch.zeros(10, self._num_envs, 1, device=self._device)
         return
-    
+
     def create_sensors(self) -> list:
         sensor_paths = [
-            f"/World/envs/env_{i}/Broomy/full_robot/robot_body/Imu{i}" for i in range(self._num_envs)
+            f"/World/envs/env_{i}/Broomy/full_robot/robot_body/Imu{i}"
+            for i in range(self._num_envs)
         ]
         sensors = []
         for path in sensor_paths:
@@ -134,37 +140,47 @@ class BroomyTask(RLTask):
         )
         self._sim_config.apply_articulation_settings(
             "Broomy",
-            get_prim_at_path(
-                self.default_zero_env_path + "/Broomy" + "/full_robot"
-            ),
+            get_prim_at_path(self.default_zero_env_path + "/Broomy" + "/full_robot"),
             self._sim_config.parse_actor_config("Broomy"),
         )
 
-    def get_observations(self) -> dict:
-        imu_reading = self.imus[0].get_current_frame()
+    def read_imus(self):
+        n = len(self.imus)
+        readings = [self.imus[i].get_current_frame() for i in range(n)]
+        accel_data = [readings[i]["lin_acc"] for i in range(n)]
+        gyro_data = [readings[i]["ang_vel"] for i in range(n)]
 
+        next_states = torch.tensor(
+            [
+                self.ahrs_insts[i].get_next_state(accel_data[i], gyro_data[i], 0.001)
+                for i in range(n)
+            ],
+            device=self._device,
+        )
+        return next_states
+
+    def get_observations(self) -> dict:
+        # Get observed quantities
         self.root_pos, self.root_quats = self._broomys.get_world_poses(clone=False)
         dof_vel = self._broomys.get_joint_velocities(clone=False)
-        self.root_vel = self._broomys.get_velocities(clone=False)
 
-        angular_velocities = self.root_vel[:, 3:]
-        euler_angles = get_euler_xyz(self.root_quats)
-        euler_rates = quats_to_euler_rates(euler_angles, angular_velocities)
+        imu_readings = self.read_imus()
+        euler_angles = imu_readings[:, 0, :]
+        euler_rates = imu_readings[:, 1, :]
 
-        eulerx, eulery, eulerz = euler_angles
+        eulerx, eulery, eulerz = (
+            euler_angles[:, 0],
+            euler_angles[:, 1],
+            euler_angles[:, 2],
+        )
 
-        roll_vel = dof_vel[:, self._roll_dof_index]
-        pitch_vel = dof_vel[:, self._pitch_dof_index]
-        yaw_vel = dof_vel[:, self._yaw_dof_index]
-
-        self.obs_buf[:, 0] = roll_vel
-        self.obs_buf[:, 1] = pitch_vel
-        self.obs_buf[:, 2] = yaw_vel
+        self.obs_buf[:, 0] = dof_vel[:, self._roll_dof_index]
+        self.obs_buf[:, 1] = dof_vel[:, self._pitch_dof_index]
+        self.obs_buf[:, 2] = dof_vel[:, self._yaw_dof_index]
         self.obs_buf[:, 3] = eulerx
         self.obs_buf[:, 4] = eulery
         self.obs_buf[:, 5] = eulerz
         self.obs_buf[:, 6:9] = euler_rates
-
 
         if self.randomize:
             _observations_uncorrelated_noise = torch.normal(
@@ -213,7 +229,9 @@ class BroomyTask(RLTask):
             self._max_effort * actions[:, 1], -self._max_effort, self._max_effort
         )
         forces[:, self._yaw_dof_index] = torch.clamp(
-            self._max_effort_yaw * actions[:, 2], -self._max_effort_yaw, self._max_effort_yaw
+            self._max_effort_yaw * actions[:, 2],
+            -self._max_effort_yaw,
+            self._max_effort_yaw,
         )
 
         if self.randomize:
@@ -247,12 +265,15 @@ class BroomyTask(RLTask):
         )
         self._broomys.set_velocities(root_velocities[env_ids], indices=env_ids)
 
+        # Reset AHRSfusion
+        for ind in indices:
+            self.ahrs_insts[ind].reset()  # TODO: get correct function
+
         # bookkeeping
         self.reset_buf[env_ids] = 0
         self.progress_buf[env_ids] = 0
 
     def post_reset(self) -> None:
-        print("DOF Names: ", self._broomys.dof_names)
         self._roll_dof_index = self._broomys.get_dof_index("roll")
         self._pitch_dof_index = self._broomys.get_dof_index("pitch")
         self._yaw_dof_index = self._broomys.get_dof_index("yaw")
@@ -303,9 +324,10 @@ def wrap_to_pi(angles):
     angles -= 2 * np.pi * (angles > np.pi)
     return angles
 
+
 def quats_to_euler_rates(euler_angles, angular_velocities):
     # x, y, z = euler_angles[:, 0], euler_angles[:, 1], euler_angles[:, 2]
-    x,y,z = euler_angles
+    x, y, z = euler_angles
     cos_x = torch.cos(x)
     cos_y = torch.cos(y)
     sin_x = torch.sin(x)
@@ -321,11 +343,14 @@ def quats_to_euler_rates(euler_angles, angular_velocities):
     t32 = sin_x / cos_y
     t33 = cos_x / cos_y
 
-    T = torch.stack([
-        torch.stack([t11, t12, t13], dim=-1),
-        torch.stack([t21, t22, t23], dim=-1),
-        torch.stack([t31, t32, t33], dim=-1)
-    ], dim=-2)
+    T = torch.stack(
+        [
+            torch.stack([t11, t12, t13], dim=-1),
+            torch.stack([t21, t22, t23], dim=-1),
+            torch.stack([t31, t32, t33], dim=-1),
+        ],
+        dim=-2,
+    )
 
     angular_velocities = angular_velocities.unsqueeze(-1)
 
