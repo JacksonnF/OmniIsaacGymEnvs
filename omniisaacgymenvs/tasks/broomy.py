@@ -147,14 +147,16 @@ class BroomyTask(RLTask):
     def read_imus(self):
         n = len(self.imus)
         readings = [self.imus[i].get_current_frame() for i in range(n)]
-        accel_data = [readings[i]["lin_acc"] for i in range(n)]
-        gyro_data = [readings[i]["ang_vel"] for i in range(n)]
+        accel_data = np.array([readings[i]["lin_acc"].cpu().numpy() for i in range(n)])
+        gyro_data = np.array([readings[i]["ang_vel"].cpu().numpy() for i in range(n)])
 
         next_states = torch.tensor(
-            [
-                self.ahrs_insts[i].get_next_state(accel_data[i], gyro_data[i], 0.001)
-                for i in range(n)
-            ],
+            np.array(
+                [
+                    self.ahrs_insts[i].get_next_state(accel_data[i], gyro_data[i], 0.001)
+                    for i in range(n)
+                ]
+            ),
             device=self._device,
         )
         return next_states
@@ -267,7 +269,7 @@ class BroomyTask(RLTask):
 
         # Reset AHRSfusion
         for ind in indices:
-            self.ahrs_insts[ind].reset()  # TODO: get correct function
+            self.ahrs_insts[ind].ahrs.reset()  # TODO: get correct function
 
         # bookkeeping
         self.reset_buf[env_ids] = 0
