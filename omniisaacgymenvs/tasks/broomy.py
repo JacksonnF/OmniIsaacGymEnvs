@@ -3,9 +3,6 @@ import torch
 import numpy as np
 from typing import Optional
 
-# import pandas as pd
-import matplotlib.pyplot as plt
-from transforms3d.euler import quat2euler
 
 import omni
 from omni.isaac.core.robots.robot import Robot
@@ -107,7 +104,8 @@ class BroomyTask(RLTask):
     def get_broomy(self):
         broomy = Broomy(
             prim_path=self.default_zero_env_path + "/Broomy",
-            usd_path="/home/fizzer/Documents/unicycle_29/no_banana_broomy.usd",
+            # usd_path="/home/fizzer/Documents/unicycle_29/no_banana_broomy.usd",
+            usd_path="/home/fizzer/Documents/broomy-2_11/full_robot_saved.usd",
             name="Broomy",
         )
         self._sim_config.apply_articulation_settings(
@@ -123,10 +121,10 @@ class BroomyTask(RLTask):
 
         angular_velocities = self.root_vel[:, 3:]
 
-        euler_angles = quat2euler(self.root_quats, axes="rzxy")
-        euler_rates = quats_to_euler_rates(euler_angles, angular_velocities)
+        euler_angles = quaternion_to_euler(self.root_quats)
+        euler_rates = compute_euler_rates(euler_angles, angular_velocities)
 
-        eulerz, eulerx, eulery = euler_angles
+        eulerz, eulerx, eulery = euler_angles.unbind(dim=-1)
 
         roll_vel = dof_vel[:, self._roll_dof_index]
         pitch_vel = dof_vel[:, self._pitch_dof_index]
@@ -279,17 +277,38 @@ def wrap_to_pi(angles):
     return angles
 
 
-def quats_to_euler_rates(euler_angles, angular_velocities):
-    z, x, y = euler_angles
-    euler_rate_matrix = np.array(
-        [
-            [np.cos(y), 0, np.sin(y)],
-            [np.sin(y) * np.tan(x), 1, -np.cos(y) * np.tan(x)],
-            [-np.sin(y) / np.cos(x), 0, np.cos(y) / np.cos(x)],
-        ]
-    )
 
-    # Compute Euler rates
-    euler_rates = euler_rate_matrix @ angular_velocities
+def quaternion_to_euler(quaternions, convention='zyx'):
+    w, x, y, z = quaternions.unbind(dim=-1)
 
+    # ZYX convention
+    if convention == 'zyx':
+        # Yaw (z-axis rotation)
+        yaw = torch.atan2(2 * (w * z + x * y), 1 - 2 * (z ** 2 + x ** 2))
+
+        # Pitch (y-axis rotation)
+        sin_pitch = 2 * (w * y - z * x)
+        sin_pitch = torch.clamp(sin_pitch, -1.0, 1.0)  # Clamp to avoid NaNs
+        pitch = torch.asin(sin_pitch)
+
+        # Roll (x-axis rotation)
+        roll = torch.atan2(2 * (w * x + y * z), 1 - 2 * (x ** 2 + y ** 2))
+
+        return torch.stack((yaw, pitch, roll), dim=-1)
+    
+def compute_euler_rates(euler_angles, angular_velocity):
+    z, x, y = euler_angles.unbind(dim=-1)  # Yaw (z), Pitch (x), Roll (y)
+
+    # Create transformation matrices for ZYX convention (batched)
+    sin_x, cos_x = torch.sin(x), torch.cos(x)
+    sin_y, cos_y = torch.sin(y), torch.cos(y)
+
+    euler_rate_matrices = torch.stack([
+        torch.stack([cos_y, torch.zeros_like(y), sin_y], dim=-1),
+        torch.stack([sin_y * torch.tan(x), torch.ones_like(x), -cos_y * torch.tan(x)], dim=-1),
+        torch.stack([-sin_y / cos_x, torch.zeros_like(x), cos_y / cos_x], dim=-1)
+    ], dim=-2)  # Shape: (N, 3, 3)
+
+    # Batch matrix multiplication
+    euler_rates = torch.einsum('bij,bj->bi', euler_rate_matrices, angular_velocity)
     return euler_rates
