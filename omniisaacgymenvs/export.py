@@ -103,7 +103,7 @@ class RLGTrainer:
         print("EXPORTING TO ONNX")
         agent = runner.create_player()
         #TODO: Specify correct path (does runner.load_path work)
-        agent.restore('./runs/Broomy/nn/Broomy.pth')
+        agent.restore('/home/fizzer/Desktop/OmniIsaacGymEnvs/omniisaacgymenvs/runs/Broomy/nn/last_Broomy_ep_1150_rew_907.5423.pth')
         # agent.init_rnn()
 
         #TODO: Could add testing like is done by twip

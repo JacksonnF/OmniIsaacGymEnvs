@@ -42,7 +42,7 @@ sim:
   gravity: [0.0, 0.0, -9.81]
 
   # whether to add a ground plane to the world
-  add_ground_plane: True
+  add_ground_plane: False
   # whether to add lighting to the world
   add_distant_light: True
 

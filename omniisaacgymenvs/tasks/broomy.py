@@ -288,7 +288,7 @@ class BroomyTask(RLTask):
         dist_from_spawn = torch.sqrt(
             torch.square(self.initial_root_pos.clone() - self.root_pos).sum(-1)
         )
-        pos_reward = 1.0 / (1.0 + 3 * dist_from_spawn**4)
+        pos_reward = 1.0 / (1.0 + 3 * dist_from_spawn**2)
 
         if self._log_wandb:
             wandb.log({
