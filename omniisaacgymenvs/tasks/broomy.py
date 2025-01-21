@@ -3,6 +3,8 @@ import torch
 import numpy as np
 from typing import Optional
 
+import wandb
+
 
 import omni
 from omni.isaac.core.robots.robot import Robot
@@ -98,7 +100,7 @@ class BroomyTask(RLTask):
             reset_xform_properties=False,
         )
         scene.add(self._broomys)
-        self.torque_buffer = torch.zeros(10, self._num_envs, 1, device=self._device)
+        self.torque_buffer = torch.zeros(10, self._num_envs, 3, device=self._device)
         return
 
     def get_broomy(self):
@@ -116,7 +118,7 @@ class BroomyTask(RLTask):
 
     def get_observations(self) -> dict:
         self.root_pos, self.root_quats = self._broomys.get_world_poses(clone=False)
-        dof_vel = self._broomys.get_joint_velocities(clone=False)
+        self.dof_vel = self._broomys.get_joint_velocities(clone=False)
         self.root_vel = self._broomys.get_velocities(clone=False)
 
         angular_velocities = self.root_vel[:, 3:]
@@ -126,9 +128,9 @@ class BroomyTask(RLTask):
 
         eulerz, eulerx, eulery = euler_angles.unbind(dim=-1)
 
-        roll_vel = dof_vel[:, self._roll_dof_index]
-        pitch_vel = dof_vel[:, self._pitch_dof_index]
-        yaw_vel = dof_vel[:, self._yaw_dof_index]
+        roll_vel = self.dof_vel[:, self._roll_dof_index]
+        pitch_vel = self.dof_vel[:, self._pitch_dof_index]
+        yaw_vel = self.dof_vel[:, self._yaw_dof_index]
 
         self.obs_buf[:, 0] = roll_vel
         self.obs_buf[:, 1] = pitch_vel
@@ -147,6 +149,13 @@ class BroomyTask(RLTask):
             )
             self.obs_buf += self._observations_correlated_noise
             self.obs_buf += _observations_uncorrelated_noise
+
+        if self._log_wandb:
+            wandb.log({
+                "Roll Ang Vel": torch.mean(roll_vel).cpu().detach().numpy(),
+                "Pitch Ang Vel": torch.mean(pitch_vel).cpu().detach().numpy(),
+                "Yaw Ang Vel": torch.mean(yaw_vel).cpu().detach().numpy(),
+            })
 
         observations = {self._broomys.name: {"obs_buf": self.obs_buf}}
         return observations
@@ -177,12 +186,18 @@ class BroomyTask(RLTask):
             dtype=torch.float32,
             device=self._device,
         )
+        try:
+            t_roll = self._stall_torque - self._stall_torque * torch.abs(self.dof_vel[:, self._roll_dof_index])
+            t_pitch = self._stall_torque - self._stall_torque * torch.abs(self.dof_vel[:, self._pitch_dof_index])
+        except:
+            t_roll = self._max_effort
+            t_pitch = self._max_effort
 
         forces[:, self._roll_dof_index] = torch.clamp(
-            self._max_effort * actions[:, 0], -self._max_effort, self._max_effort
+            t_roll * actions[:, 0], -self._max_effort, self._max_effort
         )
         forces[:, self._pitch_dof_index] = torch.clamp(
-            self._max_effort * actions[:, 1], -self._max_effort, self._max_effort
+            t_pitch * actions[:, 1], -self._max_effort, self._max_effort
         )
         forces[:, self._yaw_dof_index] = torch.clamp(
             self._max_effort_yaw * actions[:, 2],
@@ -196,6 +211,16 @@ class BroomyTask(RLTask):
                 1
             )
             forces[:, self._roll_dof_index] += self._actions_correlated_noise.squeeze(1)
+
+        self.torque_buffer = torch.roll(self.torque_buffer, -1, dims=0)
+        self.torque_buffer[-1] = forces
+
+        if self._log_wandb:
+            wandb.log({
+                "Roll Torque": torch.mean(forces[:, self._roll_dof_index]).cpu().detach().numpy(),
+                "Pitch Torque": torch.mean(forces[:, self._pitch_dof_index]).cpu().detach().numpy(),
+                "Yaw Torque": torch.mean(forces[:, self._yaw_dof_index]).cpu().detach().numpy(),
+            })
 
         indices = torch.arange(
             self._broomys.count, dtype=torch.int32, device=self._device
@@ -253,15 +278,23 @@ class BroomyTask(RLTask):
         up_reward = torch.where(self.orient_z >= 0.7, 1.0, 0)
         angle_reward = ups[..., 2]
         fallen_pen = torch.where(self.orient_z <= 0.25, -1, 0)
-        effort = torch.square(self.actions).sum(-1)
-        effort_reward = 0.05 * torch.exp(-0.5 * effort)
-        dist_from_spawn = torch.sqrt(
-            torch.square(self.initial_root_pos.clone() - self.root_pos).sum(-1)
-        )
-        pos_reward = 1.0 / (1.0 + 3 * dist_from_spawn * dist_from_spawn)
+        # effort = torch.square(torch.mean(self.torque_buffer, dim=0)).sum(-1)
+        effort = torch.abs(torch.mean(self.torque_buffer, dim=0))
+        effort_reward = torch.exp(-3.0 * effort[:, self._roll_dof_index])
+        # torque_term = 0.5 * torch.squeeze(torch.abs(torch.mean(self.torque_buffer, dim=0)), dim=1)
+        # vel_term = (2 * (0.01 * self.root_vel)**2).sum(-1)
+        vel_term = 0.075 * (self.dof_vel[:, self._roll_dof_index]/600)**2
+
+        if self._log_wandb:
+            wandb.log({
+                "Effort Reward": torch.mean(effort_reward).cpu().detach().numpy(),
+                "Angle Reward": torch.mean(angle_reward).cpu().detach().numpy(),
+                "Velocity Penalty": torch.mean(vel_term).cpu().detach().numpy(),
+            })
+
 
         self.rew_buf[:] = (
-            up_reward + fallen_pen + angle_reward + effort_reward + pos_reward
+            up_reward + fallen_pen + angle_reward + effort_reward - vel_term
         )
 
     def is_done(self) -> None:
