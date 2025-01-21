@@ -294,7 +294,7 @@ class BroomyTask(RLTask):
 
 
         self.rew_buf[:] = (
-            up_reward + fallen_pen + angle_reward + effort_reward - vel_term
+            fallen_pen + angle_reward + effort_reward - vel_term
         )
 
     def is_done(self) -> None:
