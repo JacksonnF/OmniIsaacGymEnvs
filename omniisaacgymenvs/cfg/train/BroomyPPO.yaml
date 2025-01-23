@@ -29,6 +29,14 @@ params:
         name: default
       regularizer:
         name: None
+    
+    rnn:
+      name: lstm
+      units: 128
+      layers: 1
+      before_mlp: True 
+      layer_norm: True
+
 
 
   load_checkpoint: ${if:${...checkpoint},True,False} # flag which sets whether to load the checkpoint
