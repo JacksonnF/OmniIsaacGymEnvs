@@ -301,7 +301,7 @@ class BroomyTask(RLTask):
                 "Effort Variance Penalty": torch.mean(effort_var_pen).cpu().detach().numpy(),
                 "Angle Reward": torch.mean(angle_reward).cpu().detach().numpy(),
                 "Velocity Penalty Roll": torch.mean(vel_term_roll).cpu().detach().numpy(),
-                "Velocity Penalty Pitch": torch.mean(vel_term_roll).cpu().detach().numpy(),
+                "Velocity Penalty Pitch": torch.mean(vel_term_pitch).cpu().detach().numpy(),
                 "Position Reward": torch.mean(pos_reward).cpu().detach().numpy(),
             })
 
