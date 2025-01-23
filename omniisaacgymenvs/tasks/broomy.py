@@ -245,6 +245,7 @@ class BroomyTask(RLTask):
             indices=env_ids,
         )
         self._broomys.set_velocities(root_velocities[env_ids], indices=env_ids)
+        self.torque_buffer[:, env_ids, :] = torch.zeros((10, num_resets, 1), device=self._device)
 
         # bookkeeping
         self.reset_buf[env_ids] = 0
@@ -277,22 +278,26 @@ class BroomyTask(RLTask):
         self.orient_z = ups[..., 2]
         up_reward = torch.where(self.orient_z >= 0.7, 1.0, 0)
         angle_reward = ups[..., 2]
-        fallen_pen = torch.where(self.orient_z <= 0.25, -1, 0)
+        fallen_pen = torch.where(self.orient_z <= 0.25, -2, 0)
         # effort = torch.square(torch.mean(self.torque_buffer, dim=0)).sum(-1)
-        effort = torch.abs(torch.mean(self.torque_buffer, dim=0))
-        effort_reward = torch.exp(-3.0 * effort[:, self._roll_dof_index]**2)
+        # effort = torch.abs(torch.mean(self.torque_buffer, dim=0))
+        # effort_reward = torch.exp(-3.0 * effort[:, self._roll_dof_index]**2)
         # torque_term = 0.5 * torch.squeeze(torch.abs(torch.mean(self.torque_buffer, dim=0)), dim=1)
         # vel_term = (2 * (0.01 * self.root_vel)**2).sum(-1)
         vel_term = 0.1 * (self.dof_vel[:, self._roll_dof_index]/60)**2
 
+        effort_penalty = torch.square(self.torque_buffer[-1, :, self._roll_dof_index])/4
+        effort_var_pen = (torch.abs(torch.var(self.torque_buffer, dim=0))/4)
+
         dist_from_spawn = torch.sqrt(
             torch.square(self.initial_root_pos.clone() - self.root_pos).sum(-1)
         )
-        pos_reward = 1.0 / (1.0 + 3 * dist_from_spawn**2)
+        pos_reward = 1.0 - dist_from_spawn**2
 
         if self._log_wandb:
             wandb.log({
-                "Effort Reward": torch.mean(effort_reward).cpu().detach().numpy(),
+                "Effort Penalty": torch.mean(effort_penalty).cpu().detach().numpy(),
+                "Effort Variance Penalty": torch.mean(effort_var_pen).cpu().detach().numpy(),
                 "Angle Reward": torch.mean(angle_reward).cpu().detach().numpy(),
                 "Velocity Penalty": torch.mean(vel_term).cpu().detach().numpy(),
                 "Position Reward": torch.mean(pos_reward).cpu().detach().numpy(),
@@ -300,7 +305,7 @@ class BroomyTask(RLTask):
 
 
         self.rew_buf[:] = (
-            fallen_pen + angle_reward + effort_reward - vel_term + pos_reward
+            up_reward + fallen_pen + angle_reward - effort_penalty - vel_term - effort_var_pen[:, self._roll_dof_index] + pos_reward
         )
 
     def is_done(self) -> None:
