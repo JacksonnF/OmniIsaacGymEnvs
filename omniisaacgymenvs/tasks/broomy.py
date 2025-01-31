@@ -206,11 +206,9 @@ class BroomyTask(RLTask):
         )
 
         if self.randomize:
-            forces[:, self._roll_dof_index] += self._actions_correlated_noise.squeeze(1)
-            forces[:, self._pitch_dof_index] += self._actions_correlated_noise.squeeze(
-                1
-            )
-            forces[:, self._roll_dof_index] += self._actions_correlated_noise.squeeze(1)
+            forces[:, self._roll_dof_index] += self._actions_correlated_noise[:, self._roll_dof_index]
+            forces[:, self._pitch_dof_index] += self._actions_correlated_noise[:, self._pitch_dof_index]
+            forces[:, self._yaw_dof_index] += self._actions_correlated_noise[:, self._yaw_dof_index]
 
         self.torque_buffer = torch.roll(self.torque_buffer, -1, dims=0)
         self.torque_buffer[-1] = forces
