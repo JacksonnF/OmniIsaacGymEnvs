@@ -151,11 +151,13 @@ class BroomyTask(RLTask):
             self.obs_buf += _observations_uncorrelated_noise
 
         if self._log_wandb:
-            wandb.log({
-                "Roll Ang Vel": torch.mean(roll_vel).cpu().detach().numpy(),
-                "Pitch Ang Vel": torch.mean(pitch_vel).cpu().detach().numpy(),
-                "Yaw Ang Vel": torch.mean(yaw_vel).cpu().detach().numpy(),
-            })
+            wandb.log(
+                {
+                    "Roll Ang Vel": torch.mean(roll_vel).cpu().detach().numpy(),
+                    "Pitch Ang Vel": torch.mean(pitch_vel).cpu().detach().numpy(),
+                    "Yaw Ang Vel": torch.mean(yaw_vel).cpu().detach().numpy(),
+                }
+            )
 
         observations = {self._broomys.name: {"obs_buf": self.obs_buf}}
         return observations
@@ -187,8 +189,12 @@ class BroomyTask(RLTask):
             device=self._device,
         )
         try:
-            t_roll = self._stall_torque - self._stall_torque * torch.abs(self.dof_vel[:, self._roll_dof_index])
-            t_pitch = self._stall_torque - self._stall_torque * torch.abs(self.dof_vel[:, self._pitch_dof_index])
+            t_roll = self._stall_torque - self._stall_torque * torch.abs(
+                self.dof_vel[:, self._roll_dof_index]
+            )
+            t_pitch = self._stall_torque - self._stall_torque * torch.abs(
+                self.dof_vel[:, self._pitch_dof_index]
+            )
         except:
             t_roll = self._max_effort
             t_pitch = self._max_effort
@@ -206,19 +212,36 @@ class BroomyTask(RLTask):
         )
 
         if self.randomize:
-            forces[:, self._roll_dof_index] += self._actions_correlated_noise[:, self._roll_dof_index]
-            forces[:, self._pitch_dof_index] += self._actions_correlated_noise[:, self._pitch_dof_index]
-            forces[:, self._yaw_dof_index] += self._actions_correlated_noise[:, self._yaw_dof_index]
+            forces[:, self._roll_dof_index] += self._actions_correlated_noise[
+                :, self._roll_dof_index
+            ]
+            forces[:, self._pitch_dof_index] += self._actions_correlated_noise[
+                :, self._pitch_dof_index
+            ]
+            forces[:, self._yaw_dof_index] += self._actions_correlated_noise[
+                :, self._yaw_dof_index
+            ]
 
         self.torque_buffer = torch.roll(self.torque_buffer, -1, dims=0)
         self.torque_buffer[-1] = forces
 
         if self._log_wandb:
-            wandb.log({
-                "Roll Torque": torch.mean(forces[:, self._roll_dof_index]).cpu().detach().numpy(),
-                "Pitch Torque": torch.mean(forces[:, self._pitch_dof_index]).cpu().detach().numpy(),
-                "Yaw Torque": torch.mean(forces[:, self._yaw_dof_index]).cpu().detach().numpy(),
-            })
+            wandb.log(
+                {
+                    "Roll Torque": torch.mean(forces[:, self._roll_dof_index])
+                    .cpu()
+                    .detach()
+                    .numpy(),
+                    "Pitch Torque": torch.mean(forces[:, self._pitch_dof_index])
+                    .cpu()
+                    .detach()
+                    .numpy(),
+                    "Yaw Torque": torch.mean(forces[:, self._yaw_dof_index])
+                    .cpu()
+                    .detach()
+                    .numpy(),
+                }
+            )
 
         indices = torch.arange(
             self._broomys.count, dtype=torch.int32, device=self._device
@@ -243,7 +266,9 @@ class BroomyTask(RLTask):
             indices=env_ids,
         )
         self._broomys.set_velocities(root_velocities[env_ids], indices=env_ids)
-        self.torque_buffer[:, env_ids, :] = torch.zeros((10, num_resets, 1), device=self._device)
+        self.torque_buffer[:, env_ids, :] = torch.zeros(
+            (10, num_resets, 1), device=self._device
+        )
 
         # bookkeeping
         self.reset_buf[env_ids] = 0
@@ -282,11 +307,13 @@ class BroomyTask(RLTask):
         # effort_reward = torch.exp(-3.0 * effort[:, self._roll_dof_index]**2)
         # torque_term = 0.5 * torch.squeeze(torch.abs(torch.mean(self.torque_buffer, dim=0)), dim=1)
         # vel_term = (2 * (0.01 * self.root_vel)**2).sum(-1)
-        vel_term_roll = 0.1 * (self.dof_vel[:, self._roll_dof_index]/60)**2
-        vel_term_pitch = 0.1 * (self.dof_vel[:, self._pitch_dof_index]/60)**2
+        vel_term_roll = 0.1 * (self.dof_vel[:, self._roll_dof_index] / 60) ** 2
+        vel_term_pitch = 0.1 * (self.dof_vel[:, self._pitch_dof_index] / 60) ** 2
 
-        effort_penalty = torch.square(self.torque_buffer[-1, :, self._roll_dof_index])/4
-        effort_var_pen = (torch.abs(torch.var(self.torque_buffer, dim=0))/4)
+        effort_penalty = (
+            torch.square(self.torque_buffer[-1, :, self._roll_dof_index]) / 4
+        )
+        effort_var_pen = torch.abs(torch.var(self.torque_buffer, dim=0)) / 4
 
         dist_from_spawn = torch.sqrt(
             torch.square(self.initial_root_pos.clone() - self.root_pos).sum(-1)
@@ -294,25 +321,35 @@ class BroomyTask(RLTask):
         pos_reward = 1.0 - dist_from_spawn**2
 
         if self._log_wandb:
-            wandb.log({
-                "Effort Penalty": torch.mean(effort_penalty).cpu().detach().numpy(),
-                "Effort Variance Penalty": torch.mean(effort_var_pen).cpu().detach().numpy(),
-                "Angle Reward": torch.mean(angle_reward).cpu().detach().numpy(),
-                "Velocity Penalty Roll": torch.mean(vel_term_roll).cpu().detach().numpy(),
-                "Velocity Penalty Pitch": torch.mean(vel_term_pitch).cpu().detach().numpy(),
-                "Position Reward": torch.mean(pos_reward).cpu().detach().numpy(),
-            })
-
+            wandb.log(
+                {
+                    "Effort Penalty": torch.mean(effort_penalty).cpu().detach().numpy(),
+                    "Effort Variance Penalty": torch.mean(effort_var_pen)
+                    .cpu()
+                    .detach()
+                    .numpy(),
+                    "Angle Reward": torch.mean(angle_reward).cpu().detach().numpy(),
+                    "Velocity Penalty Roll": torch.mean(vel_term_roll)
+                    .cpu()
+                    .detach()
+                    .numpy(),
+                    "Velocity Penalty Pitch": torch.mean(vel_term_pitch)
+                    .cpu()
+                    .detach()
+                    .numpy(),
+                    "Position Reward": torch.mean(pos_reward).cpu().detach().numpy(),
+                }
+            )
 
         self.rew_buf[:] = (
-            up_reward + 
-            fallen_pen + 
-            angle_reward - 
-            effort_penalty - 
-            vel_term_roll - 
-            effort_var_pen[:, self._roll_dof_index] + 
-            pos_reward - 
-            vel_term_pitch
+            up_reward
+            + fallen_pen
+            + angle_reward
+            - effort_penalty
+            - vel_term_roll
+            - effort_var_pen[:, self._roll_dof_index]
+            + pos_reward
+            - vel_term_pitch
         )
 
     def is_done(self) -> None:
@@ -328,14 +365,13 @@ def wrap_to_pi(angles):
     return angles
 
 
-
-def quaternion_to_euler(quaternions, convention='zyx'):
+def quaternion_to_euler(quaternions, convention="zyx"):
     w, x, y, z = quaternions.unbind(dim=-1)
 
     # ZYX convention
-    if convention == 'zyx':
+    if convention == "zyx":
         # Yaw (z-axis rotation)
-        yaw = torch.atan2(2 * (w * z + x * y), 1 - 2 * (z ** 2 + x ** 2))
+        yaw = torch.atan2(2 * (w * z + x * y), 1 - 2 * (z**2 + x**2))
 
         # Pitch (y-axis rotation)
         sin_pitch = 2 * (w * y - z * x)
@@ -343,10 +379,11 @@ def quaternion_to_euler(quaternions, convention='zyx'):
         pitch = torch.asin(sin_pitch)
 
         # Roll (x-axis rotation)
-        roll = torch.atan2(2 * (w * x + y * z), 1 - 2 * (x ** 2 + y ** 2))
+        roll = torch.atan2(2 * (w * x + y * z), 1 - 2 * (x**2 + y**2))
 
         return torch.stack((yaw, pitch, roll), dim=-1)
-    
+
+
 def compute_euler_rates(euler_angles, angular_velocity):
     z, x, y = euler_angles.unbind(dim=-1)  # Yaw (z), Pitch (x), Roll (y)
 
@@ -354,12 +391,133 @@ def compute_euler_rates(euler_angles, angular_velocity):
     sin_x, cos_x = torch.sin(x), torch.cos(x)
     sin_y, cos_y = torch.sin(y), torch.cos(y)
 
-    euler_rate_matrices = torch.stack([
-        torch.stack([cos_y, torch.zeros_like(y), sin_y], dim=-1),
-        torch.stack([sin_y * torch.tan(x), torch.ones_like(x), -cos_y * torch.tan(x)], dim=-1),
-        torch.stack([-sin_y / cos_x, torch.zeros_like(x), cos_y / cos_x], dim=-1)
-    ], dim=-2)  # Shape: (N, 3, 3)
+    euler_rate_matrices = torch.stack(
+        [
+            torch.stack([cos_y, torch.zeros_like(y), sin_y], dim=-1),
+            torch.stack(
+                [sin_y * torch.tan(x), torch.ones_like(x), -cos_y * torch.tan(x)],
+                dim=-1,
+            ),
+            torch.stack([-sin_y / cos_x, torch.zeros_like(x), cos_y / cos_x], dim=-1),
+        ],
+        dim=-2,
+    )  # Shape: (N, 3, 3)
 
     # Batch matrix multiplication
-    euler_rates = torch.einsum('bij,bj->bi', euler_rate_matrices, angular_velocity)
+    euler_rates = torch.einsum("bij,bj->bi", euler_rate_matrices, angular_velocity)
+    return euler_rates
+
+
+def quaternion_to_euler_zxy(quaternions):
+    w, x, y, z = quaternions.unbind(dim=-1)
+
+    xx = x * x
+    yy = y * y
+    zz = z * z
+    xy = x * y
+    xz = x * z
+    yz = y * z
+    wx = w * x
+    wy = w * y
+    wz = w * z
+
+    # Build the rotation matrix
+    rotation_matrix = torch.stack(
+        [
+            1 - 2 * (yy + zz),
+            2 * (xy - wz),
+            2 * (xz + wy),
+            2 * (xy + wz),
+            1 - 2 * (xx + zz),
+            2 * (yz - wx),
+            2 * (xz - wy),
+            2 * (yz + wx),
+            1 - 2 * (xx + yy),
+        ],
+        dim=-1,
+    ).view(-1, 3, 3)
+
+    # Extract elements for ZXY Euler angles conversion
+    # Pitch (X) is arcsin of -R[:, 1, 2]
+    pitch = torch.asin(-rotation_matrix[:, 1, 2])
+
+    # Compute cosine of pitch
+    cos_pitch = torch.cos(pitch)
+
+    # Threshold to handle gimbal lock
+    epsilon = 1e-7
+    safe_cos_pitch = torch.where(cos_pitch.abs() < epsilon, epsilon, cos_pitch)
+
+    # Mask for non-gimbal lock cases
+    mask = cos_pitch.abs() >= epsilon
+
+    # Initialize angles
+    yaw = torch.zeros_like(pitch)
+    roll = torch.zeros_like(pitch)
+
+    # Compute yaw and roll when not in gimbal lock
+    yaw_valid = torch.atan2(
+        rotation_matrix[:, 1, 0] / safe_cos_pitch,
+        rotation_matrix[:, 1, 1] / safe_cos_pitch,
+    )
+    roll_valid = torch.atan2(
+        rotation_matrix[:, 0, 2] / safe_cos_pitch,
+        rotation_matrix[:, 2, 2] / safe_cos_pitch,
+    )
+
+    # Compute yaw and roll in gimbal lock (cos_pitch ~ 0)
+    yaw_gimbal = torch.atan2(rotation_matrix[:, 0, 1], rotation_matrix[:, 0, 0])
+    roll_gimbal = torch.zeros_like(pitch)
+
+    # Apply mask to select valid or gimbal case
+    yaw = torch.where(mask, yaw_valid, yaw_gimbal)
+    roll = torch.where(mask, roll_valid, roll_gimbal)
+
+    # Stack angles into (yaw_z, pitch_x, roll_y)
+    euler_angles = torch.stack((yaw, pitch, roll), dim=-1)
+
+    return euler_angles
+
+
+def euler_rates_zxy(euler_angles, angular_velocities, epsilon=1e-7):
+    """
+    Compute Euler angle rates from Euler angles and angular velocities for ZXY convention.
+
+    Args:
+        euler_angles (torch.Tensor): Tensor of shape (N, 3) in (yaw_z, pitch_x, roll_y) order [radians].
+        angular_velocities (torch.Tensor): Tensor of shape (N, 3) in (omega_x, omega_y, omega_z) order [radians/sec].
+        epsilon (float): Small value to avoid division by zero.
+
+    Returns:
+        torch.Tensor: Euler angle rates in radians/sec as tensor of shape (N, 3) in (yaw_dot, pitch_dot, roll_dot) order.
+    """
+    # Split Euler angles into yaw (z), pitch (x), roll (y)
+    yaw_z, pitch_x, roll_y = euler_angles.unbind(dim=-1)
+
+    # Split angular velocities into omega_x, omega_y, omega_z
+    omega_x, omega_y, omega_z = angular_velocities.unbind(dim=-1)
+
+    # Compute trigonometric terms for roll (phi) and pitch (theta)
+    sin_phi = torch.sin(roll_y)
+    cos_phi = torch.cos(roll_y)
+    sin_theta = torch.sin(pitch_x)
+    cos_theta = torch.cos(pitch_x)
+
+    # Avoid division by zero by adding epsilon to cos_theta
+    cos_theta_safe = cos_theta + epsilon
+
+    # Compute yaw rate (dψ/dt)
+    yaw_dot = (-sin_phi * omega_x + cos_phi * omega_z) / cos_theta_safe
+
+    # Compute pitch rate (dθ/dt)
+    pitch_dot = cos_phi * omega_x + sin_phi * omega_z
+
+    # Compute roll rate (dφ/dt)
+    roll_dot = omega_y + (sin_phi * omega_x - cos_phi * omega_z) * (
+        sin_theta / cos_theta_safe
+    )
+
+    # Stack the rates into the correct order (yaw_dot, pitch_dot, roll_dot)
+    euler_rates = torch.stack((yaw_dot, pitch_dot, roll_dot), dim=-1)
+
     return euler_rates
