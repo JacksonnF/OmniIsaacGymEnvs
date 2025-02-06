@@ -103,7 +103,7 @@ class RLGTrainer:
         print("EXPORTING TO ONNX")
         agent = runner.create_player()
         #TODO: Specify correct path (does runner.load_path work)
-        agent.restore('/home/fizzer/Desktop/OmniIsaacGymEnvs/omniisaacgymenvs/runs/Broomy-2/nn/Broomy.pth')
+        agent.restore('/home/fizzer/Desktop/OmniIsaacGymEnvs/omniisaacgymenvs/runs/Broomy/nn/Broomy.pth')
         agent.init_rnn()
 
         #TODO: Could add testing like is done by twip
@@ -145,7 +145,7 @@ class RLGTrainer:
             print(flattened_outputs)
 
         torch.onnx.export(
-            traced, adapter.flattened_inputs, "broomy-rnn-jan31th_exp.onnx", 
+            traced, adapter.flattened_inputs, "broomy-rnn-feb5th.onnx", 
             verbose=True, input_names=['obs', 'out_state', 'hidden_state'], 
             output_names=['mu', 'log_std', 'value', 'out_state', 'hidden_state'],
         )
