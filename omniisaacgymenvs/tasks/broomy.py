@@ -313,7 +313,7 @@ class BroomyTask(RLTask):
         effort_penalty_roll = (
             torch.square(self.torque_buffer[-1, :, self._roll_dof_index]) / 4
         )
-        effort_var_pen = torch.abs(torch.var(self.torque_buffer, dim=0)) / 4
+        # effort_var_pen = torch.abs(torch.var(self.torque_buffer, dim=0)) / 4
 
         effort_penalty_pitch = (
             torch.square(self.torque_buffer[-1, :, self._pitch_dof_index]) / 4
@@ -328,10 +328,10 @@ class BroomyTask(RLTask):
             wandb.log(
                 {
                     "Effort Penalty": torch.mean(effort_penalty_roll).cpu().detach().numpy(),
-                    "Effort Variance Penalty": torch.mean(effort_var_pen)
-                    .cpu()
-                    .detach()
-                    .numpy(),
+                    # "Effort Variance Penalty": torch.mean(effort_var_pen)
+                    # .cpu()
+                    # .detach()
+                    # .numpy(),
                     "Angle Reward": torch.mean(angle_reward).cpu().detach().numpy(),
                     "Velocity Penalty Roll": torch.mean(vel_term_roll)
                     .cpu()
@@ -352,8 +352,8 @@ class BroomyTask(RLTask):
             - effort_penalty_roll
             -effort_penalty_pitch
             - vel_term_roll
-            - effort_var_pen[:, self._roll_dof_index]
-            -effort_var_pen[:, self._pitch_dof_index]
+            # - effort_var_pen[:, self._roll_dof_index]
+            # -effort_var_pen[:, self._pitch_dof_index]
             + pos_reward
             - vel_term_pitch
         )
