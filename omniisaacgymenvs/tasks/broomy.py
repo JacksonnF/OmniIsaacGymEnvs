@@ -300,7 +300,7 @@ class BroomyTask(RLTask):
         ups = quat_axis(root_quats, 2)
         self.orient_z = ups[..., 2]
         up_reward = torch.where(self.orient_z >= 0.7, 1.0, 0)
-        angle_reward = ups[..., 2]*2
+        angle_reward = ups[..., 2]**4
         fallen_pen = torch.where(self.orient_z <= 0.25, -5, 0)
         # effort = torch.square(torch.mean(self.torque_buffer, dim=0)).sum(-1)
         # effort = torch.abs(torch.mean(self.torque_buffer, dim=0))
