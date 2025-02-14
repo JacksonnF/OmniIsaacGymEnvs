@@ -49,7 +49,7 @@ class BroomyTask(RLTask):
         self.update_config(sim_config)
         self._max_episode_length = 350
 
-        self._num_observations = 9
+        self._num_observations = 8
         self._num_actions = 2
         RLTask.__init__(self, name, env)
         if self.randomize:
@@ -100,7 +100,9 @@ class BroomyTask(RLTask):
             reset_xform_properties=False,
         )
         scene.add(self._broomys)
-        self.torque_buffer = torch.zeros(10, self._num_envs, self._num_actions, device=self._device)
+        self.torque_buffer = torch.zeros(
+            10, self._num_envs, self._num_actions, device=self._device
+        )
         return
 
     def get_broomy(self):
@@ -137,8 +139,8 @@ class BroomyTask(RLTask):
         self.obs_buf[:, 2] = yaw_vel
         self.obs_buf[:, 3] = eulerx
         self.obs_buf[:, 4] = eulery
-        self.obs_buf[:, 5] = eulerz
-        self.obs_buf[:, 6:9] = euler_rates
+        # self.obs_buf[:, 5] = eulerz
+        self.obs_buf[:, 5:8] = euler_rates
 
         if self.randomize:
             _observations_uncorrelated_noise = torch.normal(
@@ -184,7 +186,7 @@ class BroomyTask(RLTask):
 
         self.actions = actions.to(self._device)
         forces = torch.zeros(
-            (self._broomys.count, self._num_actions+1),
+            (self._broomys.count, self._num_actions + 1),
             dtype=torch.float32,
             device=self._device,
         )
@@ -223,7 +225,9 @@ class BroomyTask(RLTask):
             # ]
 
         self.torque_buffer = torch.roll(self.torque_buffer, -1, dims=0)
-        self.torque_buffer[-1] = torch.stack((forces[:, self._roll_dof_index], forces[:, self._roll_dof_index]), dim=1)
+        self.torque_buffer[-1] = torch.stack(
+            (forces[:, self._roll_dof_index], forces[:, self._roll_dof_index]), dim=1
+        )
 
         if self._log_wandb:
             wandb.log(
@@ -260,9 +264,22 @@ class BroomyTask(RLTask):
         self._broomys.set_joint_positions(dof_pos, indices=indices)
         self._broomys.set_joint_velocities(dof_vel, indices=indices)
 
+        max_angle = torch.tensor(20.0 * torch.pi / 180.0, device=self._device)
+        euler_angles = torch.zeros((num_resets, 3), device=self._device)
+        euler_angles[:, 0] = (
+            torch.rand(num_resets, device=self._device) * 2 * max_angle - max_angle
+        )  # roll
+        euler_angles[:, 1] = (
+            torch.rand(num_resets, device=self._device) * 2 * max_angle - max_angle
+        )  # pitch
+        euler_angles[:, 2] = 0.0
+
+        root_rot_rand_euler = euler_angles_to_quats(euler_angles)
+
         self._broomys.set_world_poses(
             self.initial_root_pos[env_ids].clone(),
-            self.initial_root_rot[env_ids].clone(),
+            # self.initial_root_rot[env_ids].clone(),
+            root_rot_rand_euler,
             indices=env_ids,
         )
         self._broomys.set_velocities(root_velocities[env_ids], indices=env_ids)
@@ -300,7 +317,7 @@ class BroomyTask(RLTask):
         ups = quat_axis(root_quats, 2)
         self.orient_z = ups[..., 2]
         up_reward = torch.where(self.orient_z >= 0.7, 1.0, 0)
-        angle_reward = ups[..., 2]**4
+        angle_reward = ups[..., 2] ** 4
         fallen_pen = torch.where(self.orient_z <= 0.25, -5, 0)
         # effort = torch.square(torch.mean(self.torque_buffer, dim=0)).sum(-1)
         # effort = torch.abs(torch.mean(self.torque_buffer, dim=0))
@@ -327,7 +344,10 @@ class BroomyTask(RLTask):
         if self._log_wandb:
             wandb.log(
                 {
-                    "Effort Penalty": torch.mean(effort_penalty_roll).cpu().detach().numpy(),
+                    "Effort Penalty": torch.mean(effort_penalty_roll)
+                    .cpu()
+                    .detach()
+                    .numpy(),
                     # "Effort Variance Penalty": torch.mean(effort_var_pen)
                     # .cpu()
                     # .detach()
@@ -350,7 +370,7 @@ class BroomyTask(RLTask):
             + fallen_pen
             + angle_reward
             - effort_penalty_roll
-            -effort_penalty_pitch
+            - effort_penalty_pitch
             - vel_term_roll
             # - effort_var_pen[:, self._roll_dof_index]
             # -effort_var_pen[:, self._pitch_dof_index]
