@@ -103,8 +103,8 @@ class RLGTrainer:
         print("EXPORTING TO ONNX")
         agent = runner.create_player()
         #TODO: Specify correct path (does runner.load_path work)
-        agent.restore('/home/fizzer/Desktop/OmniIsaacGymEnvs/omniisaacgymenvs/runs/Broomy/nn/last_Broomy_ep_350_rew_553.38367.pth')
-        agent.init_rnn()
+        agent.restore('/home/fizzer/Desktop/OmniIsaacGymEnvs/omniisaacgymenvs/runs/Broomy/nn/Broomy.pth')
+        # agent.init_rnn()
 
         #TODO: Could add testing like is done by twip
         # where they have pytorch model(agent.model) and they
@@ -114,7 +114,7 @@ class RLGTrainer:
         # Create dummy inputs for model tracing
         inputs = {
             'obs': torch.zeros((1,) + agent.obs_shape).to(agent.device),
-            'rnn_states': agent.states,
+            # 'rnn_states': agent.states,
         }
 
         # print(agent.states)
@@ -145,9 +145,13 @@ class RLGTrainer:
             print(flattened_outputs)
 
         torch.onnx.export(
-            traced, adapter.flattened_inputs, "broomy-rnn-feb14th-early.onnx", 
-            verbose=True, input_names=['obs', 'out_state', 'hidden_state'], 
-            output_names=['mu', 'log_std', 'value', 'out_state', 'hidden_state'],
+            traced, adapter.flattened_inputs, "broomy-mlp-feb14th.onnx", 
+            verbose=True, input_names=['obs', 
+                                    #    'out_state', 'hidden_state'
+                                       ], 
+            output_names=['mu', 'log_std', 'value', 
+                        #   'out_state', 'hidden_state'
+                          ],
         )
         print("Model Exported.... Checking correctness")
         print("ONNX Outputs: ", {flattened_outputs})
