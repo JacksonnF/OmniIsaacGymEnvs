@@ -264,7 +264,7 @@ class BroomyTask(RLTask):
         self._broomys.set_joint_positions(dof_pos, indices=indices)
         self._broomys.set_joint_velocities(dof_vel, indices=indices)
 
-        max_angle = torch.tensor(20.0 * torch.pi / 180.0, device=self._device)
+        max_angle = torch.tensor(15.0 * torch.pi / 180.0, device=self._device)
         euler_angles = torch.zeros((num_resets, 3), device=self._device)
         euler_angles[:, 0] = (
             torch.rand(num_resets, device=self._device) * 2 * max_angle - max_angle
@@ -317,7 +317,7 @@ class BroomyTask(RLTask):
         ups = quat_axis(root_quats, 2)
         self.orient_z = ups[..., 2]
         up_reward = torch.where(self.orient_z >= 0.7, 1.0, 0)
-        angle_reward = ups[..., 2] ** 4
+        angle_reward = ups[..., 2] * 2
         fallen_pen = torch.where(self.orient_z <= 0.25, -5, 0)
         # effort = torch.square(torch.mean(self.torque_buffer, dim=0)).sum(-1)
         # effort = torch.abs(torch.mean(self.torque_buffer, dim=0))
@@ -339,7 +339,7 @@ class BroomyTask(RLTask):
         dist_from_spawn = torch.sqrt(
             torch.square(self.initial_root_pos.clone() - self.root_pos).sum(-1)
         )
-        pos_reward = 1.0 - dist_from_spawn**2
+        pos_reward = 1.0 - dist_from_spawn**4
 
         if self._log_wandb:
             wandb.log(
