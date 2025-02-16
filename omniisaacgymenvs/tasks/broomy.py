@@ -330,6 +330,8 @@ class BroomyTask(RLTask):
             torch.mean(torch.abs(self.torque_buffer[:, :, self._pitch_dof_index]), dim=0) / 4
         )
 
+        effort_variance = torch.abs(torch.var(self.torque_buffer, dim=0)) / 4
+
         dist_from_spawn = torch.sqrt(
             torch.square(self.initial_root_pos.clone() - self.root_pos).sum(-1)
         )
@@ -368,6 +370,7 @@ class BroomyTask(RLTask):
             - vel_term_roll
             + pos_reward
             - vel_term_pitch
+            - effort_variance[:, self._roll_dof_index]
         )
 
     def is_done(self) -> None:
