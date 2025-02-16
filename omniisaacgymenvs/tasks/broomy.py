@@ -65,6 +65,7 @@ class BroomyTask(RLTask):
                 size=(self._num_envs, self._num_actions),
                 device=self._cfg["rl_device"],
             )
+            self._randomizer = Randomizer(self._cfg, self._task_cfg)
             print("INITIAL CORRELATED NOISE: ", self._observations_correlated_noise)
         return
 
@@ -100,6 +101,10 @@ class BroomyTask(RLTask):
             reset_xform_properties=False,
         )
         scene.add(self._broomys)
+        if self.randomize:
+            self._randomizer.set_up_domain_randomization(self)
+            # self._randomizer.randomize_mass_on_startup('broomy_view', 
+                                                    #    distribution='uniform', distribution_parameters=[0.1, 0.4], operation='additive')
         self.torque_buffer = torch.zeros(
             10, self._num_envs, self._num_actions, device=self._device
         )
@@ -183,6 +188,7 @@ class BroomyTask(RLTask):
                     size=(self._num_envs, self._num_actions),
                     device=self._cfg["rl_device"],
                 )
+                # omni.replicator.isaac.physics_view.step_randomization(reset_env_ids)
 
         self.actions = actions.to(self._device)
         forces = torch.zeros(
@@ -320,7 +326,7 @@ class BroomyTask(RLTask):
         angle_reward = ups[..., 2] * 2
         fallen_pen = torch.where(self.orient_z <= 0.5, -5, 0)
 
-        vel_term_roll = 0.075 * (self.dof_vel[:, self._roll_dof_index] / 60) ** 4
+        vel_term_roll = 0.15 * (self.dof_vel[:, self._roll_dof_index] / 60) ** 4
         vel_term_pitch = 0.5 * (self.dof_vel[:, self._pitch_dof_index] / 60) ** 4
 
         effort_penalty_roll = (

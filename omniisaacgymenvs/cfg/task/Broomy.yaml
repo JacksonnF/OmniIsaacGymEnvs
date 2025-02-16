@@ -115,14 +115,26 @@ sim:
 
 domain_randomization:
   randomize: True
-  randomization_params:
-    observations:
-      on_reset:
-        operation: "additive"
-        distribution: "gaussian"
-        distribution_parameters: [0, .0001]
-      on_interval:
-        frequency_interval: 2
-        operation: "additive"
-        distribution: "gaussian"
-        distribution_parameters: [0, .002]
+  # randomization_params:
+  #   observations:
+  #     on_reset:
+  #       operation: "additive"
+  #       distribution: "gaussian"
+  #       distribution_parameters: [0, .0001]
+  #     on_interval:
+  #       frequency_interval: 2
+  #       operation: "additive"
+  #       distribution: "gaussian"
+  #       distribution_parameters: [0, .002]
+  articulation_views:
+    broomy_view:
+      body_masses:
+        on_startup:
+          operation: "additive"
+          distribution: "uniform"
+          distribution_parameters: [0.1, 0.4]
+      body_inertias:
+        on_startup:
+          operation: "additive"
+          distribution: "gaussian"
+          distribution_parameters: [[0.0, 0.0, 0.0], [0.01, 0.01, 0.01]]
