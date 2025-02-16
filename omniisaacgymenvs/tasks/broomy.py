@@ -317,15 +317,15 @@ class BroomyTask(RLTask):
         ups = quat_axis(root_quats, 2)
         self.orient_z = ups[..., 2]
         up_reward = torch.where(self.orient_z >= 0.7, 1.0, 0)
-        angle_reward = ups[..., 2] * 2
+        angle_reward = ups[..., 2] *2
         fallen_pen = torch.where(self.orient_z <= 0.25, -5, 0)
         # effort = torch.square(torch.mean(self.torque_buffer, dim=0)).sum(-1)
         # effort = torch.abs(torch.mean(self.torque_buffer, dim=0))
         # effort_reward = torch.exp(-3.0 * effort[:, self._roll_dof_index]**2)
         # torque_term = 0.5 * torch.squeeze(torch.abs(torch.mean(self.torque_buffer, dim=0)), dim=1)
         # vel_term = (2 * (0.01 * self.root_vel)**2).sum(-1)
-        vel_term_roll = 0.1 * (self.dof_vel[:, self._roll_dof_index] / 60) ** 2
-        vel_term_pitch = 0.1 * (self.dof_vel[:, self._pitch_dof_index] / 60) ** 2
+        vel_term_roll = 0.05 * (self.dof_vel[:, self._roll_dof_index] / 60) ** 4
+        vel_term_pitch = 0.05 * (self.dof_vel[:, self._pitch_dof_index] / 60) ** 4
 
         effort_penalty_roll = (
             torch.square(self.torque_buffer[-1, :, self._roll_dof_index]) / 4
@@ -339,7 +339,7 @@ class BroomyTask(RLTask):
         dist_from_spawn = torch.sqrt(
             torch.square(self.initial_root_pos.clone() - self.root_pos).sum(-1)
         )
-        pos_reward = 1.0 - dist_from_spawn**4
+        pos_reward = 1.0 - dist_from_spawn**2
 
         if self._log_wandb:
             wandb.log(

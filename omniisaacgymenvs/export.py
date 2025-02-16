@@ -145,7 +145,7 @@ class RLGTrainer:
             print(flattened_outputs)
 
         torch.onnx.export(
-            traced, adapter.flattened_inputs, "broomy-mlp-feb14th.onnx", 
+            traced, adapter.flattened_inputs, "broomy-mlp-feb15th.onnx", 
             verbose=True, input_names=['obs', 
                                     #    'out_state', 'hidden_state'
                                        ], 
