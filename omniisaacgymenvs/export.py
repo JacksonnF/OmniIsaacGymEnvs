@@ -43,6 +43,15 @@ from omniisaacgymenvs.utils.task_util import initialize_task
 from rl_games.common import env_configurations, vecenv
 from rl_games.torch_runner import Runner
 
+
+""" 
+Configuration Parameters
+"""
+IS_RNN = True
+MODEL_PATH = f"models/broomy-{"rnn" if IS_RNN else "mlp"}-{datetime.datetime.now().strftime("%Y-%m-%d")}.onnx"
+
+
+
 class ModelWrapper(torch.nn.Module):
     '''
     Main idea is to ignore outputs which we don't need from model
@@ -104,7 +113,8 @@ class RLGTrainer:
         agent = runner.create_player()
         #TODO: Specify correct path (does runner.load_path work)
         agent.restore('/home/fizzer/Desktop/OmniIsaacGymEnvs/omniisaacgymenvs/runs/Broomy/nn/Broomy.pth')
-        # agent.init_rnn()
+        if IS_RNN:
+            agent.init_rnn()
 
         #TODO: Could add testing like is done by twip
         # where they have pytorch model(agent.model) and they
@@ -112,10 +122,15 @@ class RLGTrainer:
         m = ModelWrapper(agent.model)
 
         # Create dummy inputs for model tracing
-        inputs = {
-            'obs': torch.zeros((1,) + agent.obs_shape).to(agent.device),
-            # 'rnn_states': agent.states,
-        }
+        if IS_RNN:
+            inputs = {
+                'obs': torch.zeros((1,) + agent.obs_shape).to(agent.device),
+                'rnn_states': agent.states,
+            }
+        else:
+            inputs = {
+                'obs': torch.zeros((1,) + agent.obs_shape).to(agent.device),
+            }
 
         # print(agent.states)
         # print(agent.states[0].shape)
@@ -144,15 +159,25 @@ class RLGTrainer:
             flattened_outputs = traced(*adapter.flattened_inputs)
             print(flattened_outputs)
 
-        torch.onnx.export(
-            traced, adapter.flattened_inputs, "broomy-rnn-feb15th.onnx", 
-            verbose=True, input_names=['obs', 
-                                    #    'out_state', 'hidden_state'
-                                       ], 
-            output_names=['mu', 'log_std', 'value', 
-                        #   'out_state', 'hidden_state'
-                          ],
-        )
+        if IS_RNN:
+            torch.onnx.export(
+                traced, adapter.flattened_inputs, "broomy-rnn-feb15th.onnx", 
+                verbose=True, input_names=['obs', 
+                                           'out_state', 'hidden_state'
+                                        ], 
+                output_names=['mu', 'log_std', 'value', 
+                              'out_state', 'hidden_state'
+                            ],
+            )
+        else: 
+            torch.onnx.export(
+                traced, adapter.flattened_inputs, "broomy-rnn-feb15th.onnx", 
+                verbose=True, input_names=['obs', 
+                                        ], 
+                output_names=['mu', 'log_std', 'value', 
+                            ],
+            )
+            
         print("Model Exported.... Checking correctness")
         print("ONNX Outputs: ", {flattened_outputs})
         print("Model Outputs: ", {m.forward(inputs)})
