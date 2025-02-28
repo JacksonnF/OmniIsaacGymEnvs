@@ -2,6 +2,7 @@ import math
 import torch
 import numpy as np
 from typing import Optional
+from collections import namedtuple
 
 import wandb
 
@@ -16,8 +17,15 @@ from omni.isaac.core.utils.torch.rotations import *
 from omniisaacgymenvs.tasks.base.rl_task import RLTask
 from omniisaacgymenvs.utils.domain_randomization.randomize import Randomizer
 
-
-EPS = 1e-6
+hyperparams = {
+    "epsilon": 1e-7, # set to follow what is in the code below 
+    "penalty_coeff_roll_vel": 0.15,
+    "penalty_coeff_pitch_vel": 0.5, 
+    "penalty_coeff_roll_torque": 0.25,
+    "penalty_coeff_pitch_torque": 0.25,
+    "penalty_coeff_dist_from_spawn": 1.0, # currently, penalty is (1-r^2)
+    "penalty_exponent_dist_from_spawn": 1.0,
+}
 
 
 class Broomy(Robot):
@@ -81,6 +89,12 @@ class BroomyTask(RLTask):
         self._max_effort = self._task_cfg["env"]["maxEffort"]
         self._max_effort_yaw = self._task_cfg["env"]["maxEffortYaw"]
         self._stall_torque = self._task_cfg["env"]["stallTorque"]
+        self._max_abs_torque_roll = self._task_cfg["env"]["maxAbsTorqueRoll"]
+        self._max_abs_torque_pitch = self._task_cfg["env"]["maxAbsTorqueRoll"]
+        self._max_abs_torque_yaw = self._task_cfg["env"]["maxAbsTorqueYaw"]
+        self._max_abs_motor_speed_roll = self._task_cfg["env"]["maxAbsMotorSpeedRoll"]
+        self._max_abs_motor_speed_pitch = self._task_cfg["env"]["maxAbsMotorSpeedPitch"]
+        self._max_abs_motor_speed_yaw = self._task_cfg["env"]["maxAbsMotorSpeedYaw"]
 
         self.lin_vel_scale = self._task_cfg["env"]["learn"]["linearVelocityScale"]
         self.ang_vel_scale = self._task_cfg["env"]["learn"]["angularVelocityScale"]
@@ -196,22 +210,36 @@ class BroomyTask(RLTask):
             dtype=torch.float32,
             device=self._device,
         )
+
+        max_torque_roll = 0.0
+        min_torque_roll = 0.0
+        max_torque_pitch = 0.0
+        min_torque_pitch = 0.0
+        max_torque_yaw = 0.0
+        min_torque_yaw = 0.0
+        
+
         try:
-            t_roll = self._stall_torque - self._stall_torque * torch.abs(
-                self.dof_vel[:, self._roll_dof_index]
-            )
-            t_pitch = self._stall_torque - self._stall_torque * torch.abs(
-                self.dof_vel[:, self._pitch_dof_index]
-            )
+            max_torque_roll = self._max_abs_torque_roll if self.dof_vel[:, self._pitch_dof_index] < self._max_abs_motor_speed_roll else 0.0
+            min_torque_roll = -1.0 * self._max_abs_torque_roll if self.dof_vel[:, self._pitch_dof_index] > -self._max_abs_motor_speed_roll else 0.0
+            max_torque_pitch = self._max_abs_torque_pitch if self.dof_vel[:, self._pitch_dof_index] < self._max_abs_motor_speed_pitch else 0.0
+            min_torque_pitch = -1.0 * self._max_abs_torque_pitch if self.dof_vel[:, self._pitch_dof_index] > -self._max_abs_motor_speed_pitch else 0.0
+            max_torque_yaw = self._max_abs_torque_yaw if self.dof_vel[:, self._pitch_dof_index] < self._max_abs_motor_speed_yaw else 0.0
+            min_torque_yaw = -1.0 * self._max_abs_torque_yaw if self.dof_vel[:, self._pitch_dof_index] > -self._max_abs_motor_speed_yaw else 0.0
+
         except:
-            t_roll = self._max_effort
-            t_pitch = self._max_effort
+            max_torque_roll = self._max_abs_torque_roll
+            min_torque_roll = -self._max_abs_torque_roll
+            max_torque_pitch = self._max_abs_torque_pitch
+            min_torque_pitch = -self._max_abs_torque_pitch
+            max_torque_yaw = self._max_abs_torque_yaw
+            min_torque_yaw = -self._max_abs_torque_yaw
 
         forces[:, self._roll_dof_index] = torch.clamp(
-            t_roll * actions[:, 0], -self._max_effort, self._max_effort
+            max_torque_roll * actions[:, 0], min_torque_roll, max_torque_roll
         )
         forces[:, self._pitch_dof_index] = torch.clamp(
-            t_pitch * actions[:, 1], -self._max_effort, self._max_effort
+            max_torque_pitch * actions[:, 1],  min_torque_pitch, max_torque_pitch
         )
         # forces[:, self._yaw_dof_index] = torch.clamp(
         #     self._max_effort_yaw * actions[:, 2],
@@ -326,14 +354,14 @@ class BroomyTask(RLTask):
         angle_reward = ups[..., 2] * 2
         fallen_pen = torch.where(self.orient_z <= 0.5, -5, 0)
 
-        vel_term_roll = 0.15 * (self.dof_vel[:, self._roll_dof_index] / 60) ** 4
-        vel_term_pitch = 0.5 * (self.dof_vel[:, self._pitch_dof_index] / 60) ** 4
+        vel_term_roll = hyperparams["penalty_coeff_roll_vel"] * (self.dof_vel[:, self._roll_dof_index] / 60) ** 4
+        vel_term_pitch = hyperparams["penalty_coeff_pitch_vel"] * (self.dof_vel[:, self._pitch_dof_index] / 60) ** 4
 
         effort_penalty_roll = (
-            torch.mean(torch.abs(self.torque_buffer[:, :, self._roll_dof_index]), dim=0) / 4
+            hyperparams["penalty_coeff_roll_torque"] * torch.mean(torch.abs(self.torque_buffer[:, :, self._roll_dof_index]), dim=0)
         )
         effort_penalty_pitch = (
-            torch.mean(torch.abs(self.torque_buffer[:, :, self._pitch_dof_index]), dim=0) / 4
+            hyperparams["penalty_coeff_pitch_torque"] * torch.mean(torch.abs(self.torque_buffer[:, :, self._pitch_dof_index]), dim=0)
         )
 
         effort_variance = torch.abs(torch.var(self.torque_buffer, dim=0)) / 4
@@ -341,7 +369,7 @@ class BroomyTask(RLTask):
         dist_from_spawn = torch.sqrt(
             torch.square(self.initial_root_pos.clone() - self.root_pos).sum(-1)
         )
-        pos_reward = 1.0 - dist_from_spawn
+        pos_reward = (1.0 - (hyperparams["penalty_coeff_dist_from_spawn"] * dist_from_spawn)) ** hyperparams["penalty_exponent_dist_from_spawn"]
 
         if self._log_wandb:
             wandb.log(
@@ -472,7 +500,7 @@ def quaternion_to_euler_zxy(quaternions):
     cos_pitch = torch.cos(pitch)
 
     # Threshold to handle gimbal lock
-    epsilon = 1e-7
+    epsilon = hyperparams['epsilon']
     safe_cos_pitch = torch.where(cos_pitch.abs() < epsilon, epsilon, cos_pitch)
 
     # Mask for non-gimbal lock cases

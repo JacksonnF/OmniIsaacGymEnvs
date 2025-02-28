@@ -16,6 +16,12 @@ env:
   # perform 2 simulation steps for every action (applies actions every 2 simulation steps)
   controlFrequencyInv: 2 # 2
   stallTorque: 2.0 
+  maxAbsTorquePitch: 1.4
+  maxAbsTorqueRoll: 1.4
+  maxAbsTorqueYaw: 0.22
+  maxAbsMotorSpeedRoll: 44
+  maxAbsMotorSpeedPitch: 44
+  maxAbsMotorSpeedYaw: 44
   enablePlotting: False
   randomCommandVelocityRanges:
     # train
@@ -42,7 +48,7 @@ sim:
   gravity: [0.0, 0.0, -9.81]
 
   # whether to add a ground plane to the world
-  add_ground_plane: False
+  add_ground_plane: True
   # whether to add lighting to the world
   add_distant_light: True
 
