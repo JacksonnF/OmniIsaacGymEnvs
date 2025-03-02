@@ -19,8 +19,8 @@ env:
   maxAbsTorquePitch: 1.4
   maxAbsTorqueRoll: 1.4
   maxAbsTorqueYaw: 0.22
-  maxAbsMotorSpeedRoll: 44
-  maxAbsMotorSpeedPitch: 44
+  maxAbsMotorSpeedRoll: 45
+  maxAbsMotorSpeedPitch: 45
   maxAbsMotorSpeedYaw: 44
   enablePlotting: False
   randomCommandVelocityRanges:
@@ -48,7 +48,7 @@ sim:
   gravity: [0.0, 0.0, -9.81]
 
   # whether to add a ground plane to the world
-  add_ground_plane: True
+  add_ground_plane: False
   # whether to add lighting to the world
   add_distant_light: True
 

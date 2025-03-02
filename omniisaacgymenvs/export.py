@@ -48,7 +48,7 @@ from rl_games.torch_runner import Runner
 Configuration Parameters
 """
 IS_RNN = True
-MODEL_PATH = f"models/broomy-{"rnn" if IS_RNN else "mlp"}-{datetime.datetime.now().strftime("%Y-%m-%d")}.onnx"
+MODEL_PATH = f"models/broomy-{'rnn' if IS_RNN else 'mlp'}-{datetime.datetime.now().strftime('%Y-%m-%d')}.onnx"
 
 
 
@@ -161,7 +161,7 @@ class RLGTrainer:
 
         if IS_RNN:
             torch.onnx.export(
-                traced, adapter.flattened_inputs, "broomy-rnn-feb15th.onnx", 
+                traced, adapter.flattened_inputs, "broomy-rnn-mar1st.onnx", 
                 verbose=True, input_names=['obs', 
                                            'out_state', 'hidden_state'
                                         ], 

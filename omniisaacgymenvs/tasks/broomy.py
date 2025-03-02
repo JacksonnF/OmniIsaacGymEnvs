@@ -19,8 +19,8 @@ from omniisaacgymenvs.utils.domain_randomization.randomize import Randomizer
 
 hyperparams = {
     "epsilon": 1e-7, # set to follow what is in the code below 
-    "penalty_coeff_roll_vel": 0.15,
-    "penalty_coeff_pitch_vel": 0.5, 
+    "penalty_coeff_roll_vel": 0.085,
+    "penalty_coeff_pitch_vel": 0.75, 
     "penalty_coeff_roll_torque": 0.25,
     "penalty_coeff_pitch_torque": 0.25,
     "penalty_coeff_dist_from_spawn": 1.0, # currently, penalty is (1-r^2)
@@ -153,6 +153,7 @@ class BroomyTask(RLTask):
         pitch_vel = self.dof_vel[:, self._pitch_dof_index]
         yaw_vel = self.dof_vel[:, self._yaw_dof_index]
 
+
         self.obs_buf[:, 0] = roll_vel
         self.obs_buf[:, 1] = pitch_vel
         self.obs_buf[:, 2] = yaw_vel
@@ -220,12 +221,12 @@ class BroomyTask(RLTask):
         
 
         try:
-            max_torque_roll = self._max_abs_torque_roll if self.dof_vel[:, self._pitch_dof_index] < self._max_abs_motor_speed_roll else 0.0
-            min_torque_roll = -1.0 * self._max_abs_torque_roll if self.dof_vel[:, self._pitch_dof_index] > -self._max_abs_motor_speed_roll else 0.0
+            max_torque_roll = self._max_abs_torque_roll if self.dof_vel[:, self._roll_dof_index] < self._max_abs_motor_speed_roll else 0.0
+            min_torque_roll = -1.0 * self._max_abs_torque_roll if self.dof_vel[:, self._roll_dof_index] > -self._max_abs_motor_speed_roll else 0.0
             max_torque_pitch = self._max_abs_torque_pitch if self.dof_vel[:, self._pitch_dof_index] < self._max_abs_motor_speed_pitch else 0.0
             min_torque_pitch = -1.0 * self._max_abs_torque_pitch if self.dof_vel[:, self._pitch_dof_index] > -self._max_abs_motor_speed_pitch else 0.0
-            max_torque_yaw = self._max_abs_torque_yaw if self.dof_vel[:, self._pitch_dof_index] < self._max_abs_motor_speed_yaw else 0.0
-            min_torque_yaw = -1.0 * self._max_abs_torque_yaw if self.dof_vel[:, self._pitch_dof_index] > -self._max_abs_motor_speed_yaw else 0.0
+            max_torque_yaw = self._max_abs_torque_yaw if self.dof_vel[:, self._yaw_dof_index] < self._max_abs_motor_speed_yaw else 0.0
+            min_torque_yaw = -1.0 * self._max_abs_torque_yaw if self.dof_vel[:, self._yaw_dof_index] > -self._max_abs_motor_speed_yaw else 0.0
 
         except:
             max_torque_roll = self._max_abs_torque_roll
@@ -364,7 +365,7 @@ class BroomyTask(RLTask):
             hyperparams["penalty_coeff_pitch_torque"] * torch.mean(torch.abs(self.torque_buffer[:, :, self._pitch_dof_index]), dim=0)
         )
 
-        effort_variance = torch.abs(torch.var(self.torque_buffer, dim=0)) / 4
+        # effort_variance = torch.abs(torch.var(self.torque_buffer, dim=0)) / 4
 
         dist_from_spawn = torch.sqrt(
             torch.square(self.initial_root_pos.clone() - self.root_pos).sum(-1)
@@ -404,7 +405,7 @@ class BroomyTask(RLTask):
             - vel_term_roll
             + pos_reward
             - vel_term_pitch
-            - effort_variance[:, self._roll_dof_index]
+            # - effort_variance[:, self._roll_dof_index]
         )
 
     def is_done(self) -> None:
