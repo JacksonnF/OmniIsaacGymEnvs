@@ -335,8 +335,8 @@ class BroomyTask(RLTask):
         ups = quat_axis(root_quats, 2)
         self.orient_z = ups[..., 2]
         up_reward = torch.where(self.orient_z >= 0.85, 1.0, 0)
-        # angle_reward = ups[..., 2]
-        fallen_pen = torch.where(self.orient_z <= 0.75, -10, 0)
+        angle_reward = ups[..., 2]
+        fallen_pen = torch.where(self.orient_z <= 0.75, -5, 0)
 
         vel_term_roll = 0.15 * (self.dof_vel[:, self._roll_dof_index] / 60) ** 4
         vel_term_pitch = 0.5 * (self.dof_vel[:, self._pitch_dof_index] / 60) ** 4
@@ -347,7 +347,7 @@ class BroomyTask(RLTask):
         effort_penalty_pitch = (
             torch.mean(torch.abs(self.torque_buffer[-1, :, self._pitch_dof_index]), dim=0) / 2
         )
-
+        delta_torque_pen = torch.abs(self.torque_buffer[-1, :, :] - self.torque_buffer[-2, :, :])/2
         effort_variance = torch.abs(torch.var(self.torque_buffer, dim=0)) / 4
 
         dist_from_spawn = torch.sqrt(
@@ -366,7 +366,7 @@ class BroomyTask(RLTask):
                     # .cpu()
                     # .detach()
                     # .numpy(),
-                    # "Angle Reward": torch.mean(angle_reward).cpu().detach().numpy(),
+                    "Angle Reward": torch.mean(angle_reward).cpu().detach().numpy(),
                     "Velocity Penalty Roll": torch.mean(vel_term_roll)
                     .cpu()
                     .detach()
@@ -382,7 +382,7 @@ class BroomyTask(RLTask):
         self.rew_buf[:] = (
             up_reward
             + fallen_pen
-            # + angle_reward
+            + angle_reward
             - effort_penalty_roll
             - effort_penalty_pitch
             - vel_term_roll
@@ -390,6 +390,8 @@ class BroomyTask(RLTask):
             - vel_term_pitch
             - effort_variance[:, self._roll_dof_index]
             - effort_variance[:, self._pitch_dof_index]
+            - delta_torque_pen[:, self._roll_dof_index]
+            - delta_torque_pen[:, self._pitch_dof_index]
         )
 
     def is_done(self) -> None:
