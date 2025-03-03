@@ -61,13 +61,13 @@ class BroomyTask(RLTask):
             )
             self._euler_angles_pitch_noise = torch.normal(
                 mean=-0.015,
-                std=0.05,
+                std=0.01,
                 size=(self._num_envs, 1),
                 device=self._cfg["rl_device"],
             )
             self._euler_angles_roll_noise = torch.normal(
                 mean=+0.01,
-                std=0.03,
+                std=0.01,
                 size=(self._num_envs, 1),
                 device=self._cfg["rl_device"],
             )
@@ -166,7 +166,7 @@ class BroomyTask(RLTask):
                 size=(self._num_envs, self._num_observations),
                 device=self._cfg["rl_device"],
             )
-            self.obs_buf += self._observations_correlated_noise
+            # self.obs_buf += self._observations_correlated_noise
             self.obs_buf += _observations_uncorrelated_noise
 
         if self._log_wandb:
@@ -347,7 +347,7 @@ class BroomyTask(RLTask):
         effort_penalty_pitch = (
             torch.mean(torch.abs(self.torque_buffer[-1, :, self._pitch_dof_index]), dim=0) / 2
         )
-        delta_torque_pen = torch.abs(self.torque_buffer[-1, :, :] - self.torque_buffer[-2, :, :])/2
+        delta_torque_pen = torch.abs(self.torque_buffer[-1, :, :] - self.torque_buffer[-2, :, :])/4
         effort_variance = torch.abs(torch.var(self.torque_buffer, dim=0)) / 4
 
         dist_from_spawn = torch.sqrt(
@@ -388,8 +388,8 @@ class BroomyTask(RLTask):
             - vel_term_roll
             + pos_reward
             - vel_term_pitch
-            - effort_variance[:, self._roll_dof_index]
-            - effort_variance[:, self._pitch_dof_index]
+            # - effort_variance[:, self._roll_dof_index]
+            # - effort_variance[:, self._pitch_dof_index]
             - delta_torque_pen[:, self._roll_dof_index]
             - delta_torque_pen[:, self._pitch_dof_index]
         )
