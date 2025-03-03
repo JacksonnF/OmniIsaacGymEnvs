@@ -59,6 +59,12 @@ class BroomyTask(RLTask):
                 size=(self._num_envs, self._num_observations),
                 device=self._cfg["rl_device"],
             )
+            self._euler_angles_correlated_noise = torch.normal(
+                mean=-0.0,
+                std=0.1,
+                size=(self._num_envs, 3),
+                device=self._cfg["rl_device"],
+            )
             self._actions_correlated_noise = torch.normal(
                 mean=0,
                 std=0.001,
@@ -66,7 +72,7 @@ class BroomyTask(RLTask):
                 device=self._cfg["rl_device"],
             )
             self._randomizer = Randomizer(self._cfg, self._task_cfg)
-            print("INITIAL CORRELATED NOISE: ", self._observations_correlated_noise)
+            print("INITIAL CORRELATED NOISE: ", self._euler_angles_correlated_noise)
         return
 
     def update_config(self, sim_config):
@@ -132,6 +138,8 @@ class BroomyTask(RLTask):
 
         euler_angles = quaternion_to_euler_zxy(self.root_quats)
         euler_rates = euler_rates_zxy(euler_angles, angular_velocities)
+
+        euler_angles += self._euler_angles_correlated_noise
 
         eulerz, eulerx, eulery = euler_angles.unbind(dim=-1)
 
@@ -199,10 +207,10 @@ class BroomyTask(RLTask):
         try:
             t_roll = self._stall_torque - self._stall_torque * torch.abs(
                 self.dof_vel[:, self._roll_dof_index]
-            )
+            ) / (45 * 2 * np.pi)
             t_pitch = self._stall_torque - self._stall_torque * torch.abs(
                 self.dof_vel[:, self._pitch_dof_index]
-            )
+            ) / (45 * 2 * np.pi)
         except:
             t_roll = self._max_effort
             t_pitch = self._max_effort
@@ -232,7 +240,7 @@ class BroomyTask(RLTask):
 
         self.torque_buffer = torch.roll(self.torque_buffer, -1, dims=0)
         self.torque_buffer[-1] = torch.stack(
-            (forces[:, self._roll_dof_index], forces[:, self._roll_dof_index]), dim=1
+            (forces[:, self._roll_dof_index], forces[:, self._pitch_dof_index]), dim=1
         )
 
         if self._log_wandb:
@@ -324,9 +332,9 @@ class BroomyTask(RLTask):
         self.orient_z = ups[..., 2]
         up_reward = torch.where(self.orient_z >= 0.85, 1.0, 0)
         angle_reward = ups[..., 2] * 2
-        fallen_pen = torch.where(self.orient_z <= 0.5, -5, 0)
+        fallen_pen = torch.where(self.orient_z <= 0.8, -5, 0)
 
-        vel_term_roll = 0.15 * (self.dof_vel[:, self._roll_dof_index] / 60) ** 4
+        vel_term_roll = 0.075 * (self.dof_vel[:, self._roll_dof_index] / 60) ** 4
         vel_term_pitch = 0.5 * (self.dof_vel[:, self._pitch_dof_index] / 60) ** 4
 
         effort_penalty_roll = (
@@ -377,10 +385,11 @@ class BroomyTask(RLTask):
             + pos_reward
             - vel_term_pitch
             - effort_variance[:, self._roll_dof_index]
+            - effort_variance[:, self._pitch_dof_index]
         )
 
     def is_done(self) -> None:
-        resets = torch.where(self.orient_z < 0.1, 1, 0)
+        resets = torch.where(self.orient_z < 0.7, 1, 0)
         resets = torch.where(self.progress_buf >= self._max_episode_length, 1, resets)
         self.reset_buf[:] = resets
 
