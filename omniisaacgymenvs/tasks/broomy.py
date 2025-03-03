@@ -60,13 +60,13 @@ class BroomyTask(RLTask):
                 device=self._cfg["rl_device"],
             )
             self._euler_angles_pitch_noise = torch.normal(
-                mean=0.015,
+                mean=-0.015,
                 std=0.05,
                 size=(self._num_envs, 1),
                 device=self._cfg["rl_device"],
             )
             self._euler_angles_roll_noise = torch.normal(
-                mean=-0.01,
+                mean=+0.01,
                 std=0.03,
                 size=(self._num_envs, 1),
                 device=self._cfg["rl_device"],
