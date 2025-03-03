@@ -16,6 +16,12 @@ env:
   # perform 2 simulation steps for every action (applies actions every 2 simulation steps)
   controlFrequencyInv: 2 # 2
   stallTorque: 2.0 
+  maxAbsTorquePitch: 1.4
+  maxAbsTorqueRoll: 1.4
+  maxAbsTorqueYaw: 0.22
+  maxAbsMotorSpeedRoll: 45
+  maxAbsMotorSpeedPitch: 45
+  maxAbsMotorSpeedYaw: 44
   enablePlotting: False
   randomCommandVelocityRanges:
     # train
